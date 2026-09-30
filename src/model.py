@@ -121,12 +121,12 @@ class DualViewRAGVLM(nn.Module):
         self.llm = get_peft_model(self.llm, lora_config)
         self.llm.print_trainable_parameters()
 
-        # Ensure projector, classifier head, and view embeddings are on the LLM's target device
+        # Keep projector, classifier head, and view embeddings in float32 for fp16 stability
         target_device = next(self.llm.parameters()).device
-        self.projector.to(device=target_device, dtype=torch_dtype)
+        self.projector.to(device=target_device, dtype=torch.float32)
         self.classifier_head.to(device=target_device, dtype=torch.float32)
-        self.view_embed_frontal = nn.Parameter(self.view_embed_frontal.to(device=target_device, dtype=torch_dtype))
-        self.view_embed_lateral = nn.Parameter(self.view_embed_lateral.to(device=target_device, dtype=torch_dtype))
+        self.view_embed_frontal = nn.Parameter(self.view_embed_frontal.to(device=target_device, dtype=torch.float32))
+        self.view_embed_lateral = nn.Parameter(self.view_embed_lateral.to(device=target_device, dtype=torch.float32))
 
     def set_stage(self, stage: int):
         """
@@ -168,34 +168,34 @@ class DualViewRAGVLM(nn.Module):
         Forward pass with multimodal fusion and auxiliary loss.
         """
         device = next(self.llm.parameters()).device
-        dtype = self.projector.net[0].weight.dtype
+        llm_dtype = self.llm.get_input_embeddings().weight.dtype
 
-        frontal = frontal_feats.to(device, dtype=dtype)
-        lateral = lateral_feats.to(device, dtype=dtype)
+        frontal = frontal_feats.to(device=device, dtype=torch.float32)
+        lateral = lateral_feats.to(device=device, dtype=torch.float32)
         input_ids = input_ids.to(device)
         attention_mask = attention_mask.to(device)
         if labels is not None:
             labels = labels.to(device)
         if labels_14 is not None:
-            labels_14 = labels_14.to(device, dtype=torch.float32)
+            labels_14 = labels_14.to(device=device, dtype=torch.float32)
 
-        # 1. Add learned view embeddings
-        f_tokens = frontal + self.view_embed_frontal.to(device, dtype=dtype)
-        l_tokens = lateral + self.view_embed_lateral.to(device, dtype=dtype)
+        # 1. Add learned view embeddings in float32
+        f_tokens = frontal + self.view_embed_frontal
+        l_tokens = lateral + self.view_embed_lateral
 
         # 2. Auxiliary 14-Finding Classifier Head
-        f_global = f_tokens.mean(dim=1).float()
-        l_global = l_tokens.mean(dim=1).float()
+        f_global = f_tokens.mean(dim=1)
+        l_global = l_tokens.mean(dim=1)
         dual_global = torch.cat([f_global, l_global], dim=-1)  # [B, 2*D_enc]
         cls_logits = self.classifier_head(dual_global)         # [B, 14]
 
-        loss_cls = torch.tensor(0.0, device=device)
+        loss_cls = torch.tensor(0.0, device=device, dtype=torch.float32)
         if labels_14 is not None:
-            loss_cls = F.binary_cross_entropy_with_logits(cls_logits, labels_14.to(device).float())
+            loss_cls = F.binary_cross_entropy_with_logits(cls_logits, labels_14)
 
-        # 3. Project visual tokens to LLM dimension
+        # 3. Project visual tokens to LLM dimension in float32, then cast to LLM dtype
         vis_tokens = torch.cat([f_tokens, l_tokens], dim=1)    # [B, 288, D_enc]
-        vis_embeds = self.projector(vis_tokens)                # [B, 288, D_llm]
+        vis_embeds = self.projector(vis_tokens).to(llm_dtype)  # [B, 288, D_llm]
 
         # 4. Replace image pad tokens in LLM input sequence
         # Get base model token embeddings
@@ -225,7 +225,7 @@ class DualViewRAGVLM(nn.Module):
         loss_lm = outputs.loss if labels is not None else None
         total_loss = None
         if loss_lm is not None:
-            total_loss = loss_lm + self.cls_loss_weight * loss_cls
+            total_loss = loss_lm.float() + self.cls_loss_weight * loss_cls.float()
 
         return {
             "loss": total_loss,
@@ -256,7 +256,7 @@ class DualViewRAGVLM(nn.Module):
         """
         self.eval()
         device = next(self.llm.parameters()).device
-        dtype = self.projector.net[0].weight.dtype
+        llm_dtype = self.llm.get_input_embeddings().weight.dtype
 
         # Ensure batch dimension
         if frontal_feat.ndim == 2:
@@ -267,13 +267,13 @@ class DualViewRAGVLM(nn.Module):
             prompt_ids = prompt_ids.unsqueeze(0)
 
         prompt_ids = prompt_ids.to(device)
-        frontal = frontal_feat.to(device, dtype=dtype)
-        lateral = lateral_feat.to(device, dtype=dtype)
+        frontal = frontal_feat.to(device=device, dtype=torch.float32)
+        lateral = lateral_feat.to(device=device, dtype=torch.float32)
 
-        f_tokens = frontal + self.view_embed_frontal.to(device, dtype=dtype)
-        l_tokens = lateral + self.view_embed_lateral.to(device, dtype=dtype)
+        f_tokens = frontal + self.view_embed_frontal
+        l_tokens = lateral + self.view_embed_lateral
         vis_tokens = torch.cat([f_tokens, l_tokens], dim=1)
-        vis_embeds = self.projector(vis_tokens)
+        vis_embeds = self.projector(vis_tokens).to(llm_dtype)
 
         # Build inputs_embeds
         embed_tokens = self.llm.get_input_embeddings()

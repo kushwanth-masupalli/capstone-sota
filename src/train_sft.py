@@ -68,7 +68,7 @@ def evaluate_val_rouge(
     model: DualViewRAGVLM,
     val_dataset: IUReportDataset,
     device: str,
-    max_eval_samples: int = 100,
+    max_eval_samples: int = 20,
 ) -> float:
     """Fast validation ROUGE-L proxy using local LCS (zero Java overhead)."""
     model.eval()
@@ -87,7 +87,7 @@ def evaluate_val_rouge(
                 frontal_feat=f_feat,
                 lateral_feat=l_feat,
                 prompt_ids=p_ids,
-                max_new_tokens=96,
+                max_new_tokens=64,
                 num_beams=1,
                 do_sample=False,
             )[0]
@@ -114,11 +114,11 @@ def train_stage(
 
     # Configure learning rates per parameter group
     if stage == 1:
-        # High LR for new initialized projector and heads
+        # Stable warmup LR for new initialized projector and heads
         params = [
-            {"params": model.projector.parameters(), "lr": 1e-3},
-            {"params": model.classifier_head.parameters(), "lr": 1e-3},
-            {"params": [model.view_embed_frontal, model.view_embed_lateral], "lr": 1e-3},
+            {"params": model.projector.parameters(), "lr": 2e-4},
+            {"params": model.classifier_head.parameters(), "lr": 2e-4},
+            {"params": [model.view_embed_frontal, model.view_embed_lateral], "lr": 1e-4},
         ]
     else:
         # Differential LRs: lower for base LoRA, lower for tuned projector
@@ -174,6 +174,12 @@ def train_stage(
                 labels_14=labels_14,
             )
 
+            # Numerical stability guard against NaNs/Infs
+            if torch.isnan(outputs["loss"]) or torch.isinf(outputs["loss"]):
+                print(f"Warning: NaN/Inf detected at step {step}, skipping batch...")
+                optimizer.zero_grad()
+                continue
+
             loss = outputs["loss"] / grad_accum_steps
             loss.backward()
 
@@ -183,11 +189,14 @@ def train_stage(
             step_count += 1
 
             if (step + 1) % grad_accum_steps == 0 or (step + 1) == len(train_loader):
-                nn.utils.clip_grad_norm_(
+                grad_norm = nn.utils.clip_grad_norm_(
                     [p for p in model.parameters() if p.requires_grad], max_norm=1.0
                 )
-                optimizer.step()
-                scheduler.step()
+                if not torch.isnan(grad_norm) and not torch.isinf(grad_norm):
+                    optimizer.step()
+                    scheduler.step()
+                else:
+                    print(f"Warning: NaN grad_norm at step {step}, skipping step")
                 optimizer.zero_grad()
 
             pbar.set_postfix({
@@ -237,8 +246,8 @@ def main():
     parser.add_argument("--llm_name", default="Qwen/Qwen2.5-3B-Instruct")
     parser.add_argument("--out_dir", default="outputs/checkpoints")
     parser.add_argument("--stage", type=int, choices=[1, 2, 0], default=0, help="1=Warmup, 2=SFT, 0=Both")
-    parser.add_argument("--epochs_s1", type=int, default=3)
-    parser.add_argument("--epochs_s2", type=int, default=10)
+    parser.add_argument("--epochs_s1", type=int, default=1, help="Stage 1 warmup epochs (default: 1)")
+    parser.add_argument("--epochs_s2", type=int, default=3, help="Stage 2 SFT epochs (default: 3)")
     parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--grad_accum", type=int, default=4)
     parser.add_argument("--seed", type=int, default=42)
