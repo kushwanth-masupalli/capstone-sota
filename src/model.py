@@ -121,9 +121,12 @@ class DualViewRAGVLM(nn.Module):
         self.llm = get_peft_model(self.llm, lora_config)
         self.llm.print_trainable_parameters()
 
-        # Ensure projector and classifier head are in correct dtype and float
-        self.projector.to(torch_dtype)
-        self.classifier_head.to(torch.float32)
+        # Ensure projector, classifier head, and view embeddings are on the LLM's target device
+        target_device = next(self.llm.parameters()).device
+        self.projector.to(device=target_device, dtype=torch_dtype)
+        self.classifier_head.to(device=target_device, dtype=torch.float32)
+        self.view_embed_frontal = nn.Parameter(self.view_embed_frontal.to(device=target_device, dtype=torch_dtype))
+        self.view_embed_lateral = nn.Parameter(self.view_embed_lateral.to(device=target_device, dtype=torch_dtype))
 
     def set_stage(self, stage: int):
         """
@@ -164,11 +167,17 @@ class DualViewRAGVLM(nn.Module):
         """
         Forward pass with multimodal fusion and auxiliary loss.
         """
-        device = input_ids.device
+        device = next(self.llm.parameters()).device
         dtype = self.projector.net[0].weight.dtype
 
         frontal = frontal_feats.to(device, dtype=dtype)
         lateral = lateral_feats.to(device, dtype=dtype)
+        input_ids = input_ids.to(device)
+        attention_mask = attention_mask.to(device)
+        if labels is not None:
+            labels = labels.to(device)
+        if labels_14 is not None:
+            labels_14 = labels_14.to(device, dtype=torch.float32)
 
         # 1. Add learned view embeddings
         f_tokens = frontal + self.view_embed_frontal.to(device, dtype=dtype)
@@ -246,7 +255,7 @@ class DualViewRAGVLM(nn.Module):
         Generate candidate reports given visual features and prompt tokens.
         """
         self.eval()
-        device = prompt_ids.device
+        device = next(self.llm.parameters()).device
         dtype = self.projector.net[0].weight.dtype
 
         # Ensure batch dimension
@@ -257,6 +266,7 @@ class DualViewRAGVLM(nn.Module):
         if prompt_ids.ndim == 1:
             prompt_ids = prompt_ids.unsqueeze(0)
 
+        prompt_ids = prompt_ids.to(device)
         frontal = frontal_feat.to(device, dtype=dtype)
         lateral = lateral_feat.to(device, dtype=dtype)
 

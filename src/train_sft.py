@@ -158,12 +158,12 @@ def train_stage(
 
         pbar = tqdm(train_loader, desc=f"Stage {stage} Ep {epoch}/{epochs}")
         for step, batch in enumerate(pbar):
-            f_feats = batch["frontal_feats"]
-            l_feats = batch["lateral_feats"]
-            input_ids = batch["input_ids"]
-            attn_mask = batch["attention_mask"]
-            labels = batch["labels"]
-            labels_14 = batch["labels_14"]
+            f_feats = batch["frontal_feats"].to(device)
+            l_feats = batch["lateral_feats"].to(device)
+            input_ids = batch["input_ids"].to(device)
+            attn_mask = batch["attention_mask"].to(device)
+            labels = batch["labels"].to(device)
+            labels_14 = batch["labels_14"].to(device)
 
             outputs = model(
                 frontal_feats=f_feats,
