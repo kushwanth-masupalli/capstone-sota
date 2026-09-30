@@ -1,0 +1,45 @@
+{
+  "baseline": "E1_retrieval_top1",
+  "num_test_studies": 589,
+  "headline_metrics": {
+    "BLEU-1": 0.3448844701373682,
+    "BLEU-2": 0.20199529182753226,
+    "BLEU-3": 0.12985643184244167,
+    "BLEU-4": 0.08708671972785373,
+    "METEOR": 0.15144115959224294,
+    "ROUGE-L": 0.2512617069104164,
+    "CIDEr": 0.19698788903210004
+  },
+  "sample_records": [
+    {
+      "uid": "3039",
+      "prediction": "the lungs and pleural spaces show no acute abnormality. heart size and pulmonary vascularity within normal limits.",
+      "ground_truth": "normal heart size. clear lungs. no pneumothorax or large pleural effusion.",
+      "retrieved_uid": "1118"
+    },
+    {
+      "uid": "1758",
+      "prediction": "stable cardiomediastinal silhouette. no focal pulmonary opacity, pleural effusion or pneumothorax. no acute bony abnormality. there are stable degenerative changes of the spine.",
+      "ground_truth": "the heart is normal in size. the mediastinal contours are within normal limits. there is mild prominence of the superior mediastinum which is somewhat lucent and reflects mediastinal and vascular structures. no focal consolidation is seen. there is no pleural effusion.",
+      "retrieved_uid": "3635"
+    },
+    {
+      "uid": "1860",
+      "prediction": "there are no focal areas of consolidation. no pleural effusions. no pneumothorax. heart size within normal limits. calcified granulomas. degenerative changes thoracic spine.",
+      "ground_truth": "the cardiac and mediastinal silhouettes are normal. the lungs are well-expanded and clear. there is no focal airspace opacity. there is no pneumothorax or effusion. there is dextrocurvature of the thoracic spine. there is deformity of the t9 vertebral body. levocurvature of the lumbar spine with significant degenerative change is also noted.",
+      "retrieved_uid": "824"
+    },
+    {
+      "uid": "1502",
+      "prediction": "there is a rounded dense opacity in the lateral left midlung zone probably the left upper lobe most suggestive of a rounded pneumonia. there is no pleural effusion. the heart and mediastinum are normal. the skeletal structures are normal.",
+      "ground_truth": "the lungs are clear. there is no pleural effusion or pneumothorax. the heart and mediastinum are normal. the skeletal structures are normal.",
+      "retrieved_uid": "2859"
+    },
+    {
+      "uid": "1295",
+      "prediction": "enlarged cardiomediastinal silhouette. low lung volumes. relative elevation of right hemidiaphragm. left base density. no focal consolidation, pneumothorax or large pleural effusion. negative for acute bone abnormality.",
+      "ground_truth": "low lung volumes are present. the heart size and pulmonary vascularity appear within normal limits. the lungs are free of focal airspace disease. no pleural effusion or pneumothorax is seen. mild degenerative changes are present in the spine.",
+      "retrieved_uid": "1233"
+    }
+  ]
+}

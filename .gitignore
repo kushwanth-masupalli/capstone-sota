@@ -1,0 +1,16 @@
+# Large image datasets & feature tensors (regenerated via scripts or Colab)
+data/images/
+processed/feats/
+outputs/checkpoints/
+
+# Python cache & compiled binaries
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Environment & logs
+.env
+venv/
+*.log

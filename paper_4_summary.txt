@@ -1,0 +1,966 @@
+*** 4_DAMPER_AAAI2025.pdf (10 pages) ***
+
+=== FOUND METHOD at 1132 ===
+methods may lead to misaligned relation-
+ships. To address these issues, we propose DAMPER, a dual-
+stage framework for medical report generation that mimics
+the clinical pipeline of report writing in two stages. In the first
+stage, a MeSH-Guided Coarse-Grained Alignment (MCG)
+stage that aligns chest X-ray (CXR) image features with med-
+ical subject headings (MeSH) features to generate a rough
+keyphrase representation of the overall impression. In the sec-
+ond stage, a Hypergraph-Enhanced Fine-Grained Alignment
+(HFG) stage that constructs hypergraphs for image patches
+and report annotations, modeling high-order relationships
+within each modality and performing hypergraph matching to
+capture semantic correlations between image regions and tex-
+tual phrases. Finally,the coarse-grained visual features, gen-
+erated MeSH representations, and visual hypergraph features
+are fed into a report decoder to produce the final medical re-
+port. Extensive experiments on public datasets demonstrate
+the effectiveness of DAMPER in generating comprehensive
+and accurate medical reports, outperforming state-of-the-art
+methods across various evaluation metrics.
+Introduction
+Medical reports are essential for highlighting clinical find-
+ings and summarizing diagnoses and recommendations,
+which are crucial for clinical decision-making and patient
+management. However, the rise in medical imaging has
+made traditional manual report generation time-consuming
+and error-prone, potentially affecting patient
+
+=== FOUND METHOD at 3428 ===
+methods (Shin et al. 2016; Yuan et al.
+2019) directly map input chest X-ray (CXR) images to med-
+ical reports using CNNs and RNNs, while others focus on
+effective image-text alignment to facilitate report genera-
+tion. The latter methods believe that cross-modal dispar-
+ity between images and texts may affect the mapping from
+CXR images to reports. They primarily rely on two types
+of alignment: coarse-grained and fine-grained alignment.
+Coarse-grained alignment methods (Yang et al. 2023; Chen
+et al. 2024b,c) align entire image features with whole report
+features, whereas fine-grained alignment methods (Qin and
+Song 2022; Yang et al. 2023) aim to match specific image
+regions with corresponding descriptions in the report. How-
+ever, these methods still face two main challenges when us-
+ing alignment for report generation.
+arXiv:2412.14535v2  [cs.CV]  23 Dec 2024
+
+--- PAGE 2 ---
+The first challenge in automatic medical report generation
+is that current methods often generate reports directly from
+medical images, overlooking the clinical pipeline involved
+in report writing. Physicians typically conduct a quick re-
+view of images to form an overall impression, identify-
+ing major structures and abnormalities, followed by a de-
+tailed examination of specific regions for accurate diagno-
+sis (Brady 2018), as shown in Fig. 1 (c). While some ap-
+proaches (Mei et al. 2024; Jing, Xie, and Xing 2017) con-
+sider the clinical practice of writing reports, they rely on
+clinical history or us
+
+=== FOUND METHOD at 4985 ===
+methods require additional effort to obtain
+extra patient information, which may not always be readily
+available due to privacy concerns surrounding medical data.
+Hence, it is imperative to consider the clinical practice of re-
+port generation to ensure the comprehension and accuracy
+of the generated reports.
+Another challenge in current fine-grained alignment
+methods is that they directly match image tokens with
+words, leading to misaligned relationships. In medical re-
+ports, detailed pathological findings are often described for
+different anatomical regions (Tanida et al. 2023), as shown
+in Fig. 1 (c), ”left lower lobe calcified granuloma” (yel-
+low region) and ”mild right lung atelectasis” (red region).
+This implies that certain phrases in the report are corre-
+lated with the specific anatomical regions. Existing meth-
+ods (Zhao et al. 2023; Li et al. 2023) achieve fine-grained
+alignment by establishing the relation between each image
+region and each word token one by one, as shown in Fig. 1
+(a). However, this direct token-to-word matching approach
+can potentially fragment semantic information across dif-
+ferent patches or words, resulting in incomplete and unrea-
+sonable alignments between individual patches and words.
+Therefore, it is crucial to consider intra-modal relationships
+during the fine-grained alignment process in report genera-
+tion.
+To address these challenges, we propose the Dual-Stage
+Medical Repport Generation Framework with Coarse-
+Grained MeSH Alignment
+
+=== FOUND METHOD at 9916 ===
+methods across various evaluation metrics.
+Related Work
+Cross-Modality Alignment
+Cross-modal alignment involves matching and integrating
+features from different modalities, such as images and text,
+to effectively combine visual and semantic information. Re-
+cent advancements in this field include techniques like CLIP,
+GAN, and graph matching.
+The CLIP model excels in coarse-grained feature in-
+teraction through pretraining on large image-text datasets,
+demonstrating strong zero-shot learning capabilities (Rad-
+ford et al. 2021). CLIP’s success has spurred further re-
+search, such as SoftCLIP (Gao et al. 2024) and mCLIP
+(Chen et al. 2023), which have refined alignment techniques.
+
+--- PAGE 3 ---
+Figure 2: Overview of the proposed DAMPER framework. In the MCG stage, the MCA module extracts coarse-grained visual
+features aligned with MeSH terms, which are then input into the CMG. The HFG stage includes Intra-RCA and Inter-RCA
+modules that acquire detailed information corresponding to the report. This information, along with the output from MCA and
+CMG, is fed into the report decoder to generate the final medical report.
+However, since MeSH consists of keywords, it may not
+fully capture the semantic relationships between images, and
+CLIP-like models often require extensive training data for
+specialized domains. In contrast, GAN offers greater flexi-
+bility, making it more suitable for the coarse-grained align-
+ment task in this context.
+Graph matching techniques, such as GEM (Liu
+
+=== FOUND METHOD at 11542 ===
+methods utilize graph structures to represent intricate
+associations between image regions and text, allowing for
+more precise alignment. Our study builds on this by explor-
+ing hypergraph matching for fine-grained alignment, which
+enhances the representation of complex relationships be-
+tween visual features and text phrases.
+Medical Report Generation
+Medical report generation is a complex task that involves
+transforming medical images into accurate and coherent tex-
+tual descriptions. To improve the quality of generated text,
+researchers introduced Transformer-based methods (Yang
+et al. 2023; Cao et al. 2022), significantly enhancing the co-
+herence and contextual understanding of generated reports.
+Subsequently, some researchers attempted to incorporate ad-
+ditional information into the decoding process to further
+improve the quality and accuracy of the generated reports
+(Zhang et al. 2021; Liu et al. 2021).
+Despite the significant advancements in report generation
+quality and medical accuracy achieved by these methods,
+they share a common limitation: the MeSH is not fully ex-
+plored. MeSH terms are crucial elements that encapsulate
+disease conditions and health status, and they are essential
+for generating reports the accurately reflect pathological in-
+formation. In light of this, we propose incorporating MeSH
+information into the report generation process to better sim-
+ulate the real-world report writing workflow, with the aim of
+producing more accurate radiology repor
+
+=== FOUND METHOD at 13046 ===
+Methods
+Overview
+DAMPER is a two-stage framework that simulates the med-
+ical report generation process in clinical practice. The first
+stage, MCG, includes a MeSH Encoding, MCA , and CMG
+modules. During the MCG stage, we extract MeSH graph
+embeddings Fm and image representations Vim using the
+MeSH Encoding and Image Encoder. Then, the MCA mod-
+ule employs a GAN to generate coarse-grained visual fea-
+
+--- PAGE 4 ---
+tures V ∗
+im aligned with Fm, which are input into the CMG
+module to produce phrase representations that capture the
+overall impression. The second stage, HFG, involves fea-
+tures extraction, Intra-RCA, Inter-RCA, and report gener-
+ation. HFG constructs hypergraphs Hr and Hir based on
+report phrases and image regions, achieving precise match-
+ing through loss functions LN and LS in Intra-RCA and
+Inter-RCA. Finally, the outputs Vm, Dm, and Vr from MCA,
+CMG, and Intra-RCA are fused and passed into the report
+decoder to generate the textual report. The overall workflow
+is illustrated in Fig. 2.
+Stage 1: MeSH-Guided Coarse-Grained Alignment
+Brady (2018) noted that in clinical report writing, physi-
+cians first form an overall impression before analyzing de-
+tails. Existing methods either require more patient informa-
+tion (Mei et al. 2024) or overlook underlying pathologies
+when considering clinical practices (Jing, Xie, and Xing
+2017). To address this, we designed the MCG stage, which
+includes the MeSH Encoding, MCA, and CMG. The pri-
+mary objective of MCG is to opti
+
+=== FOUND METHOD at 17657 ===
+methods directly matched
+image regions with words (Zhao et al. 2023; Li et al. 2023),
+often neglecting higher-order semantic relationships within
+each modality. To achieve precise alignment while preserv-
+ing complex intra-modal connections, we designed the HFG
+stage, which includes: Features Extraction, Intra-RCA and
+Inter-RCA, and Report Generation. The HFG stage aims to
+refine the extracted fine-grained visual information to match
+detailed medical expressions in the report, simulating the
+thorough examination process in clinical report writing.
+Features Extraction
+We utilize Clinical-BERT to ex-
+tract textual information from medical report: R
+=
+Clinical − BERT(report). For a given medical image Ii,
+we employ a Vision Transformer (VIT) model to extract its
+fine-grained features: Vir = V IT(Ii).
+Intra-Patient Report-CXR Alignment (Intra-RCA)
+To
+capture intra-modal relationships and align image regions
+with report phrases, we designed the Intra-RCA module. We
+use RGM and KNN clustering to build the report hypergraph
+Hr = (Nr, Er), which is input into a HGCN to obtain the
+overall relational representation Fr = HGCN(Hr). Based
+on Vir, we construct a visual feature hypergraph Hir =
+(Nir, Eir) for each view i and process it using a HGCN to
+obtain the overall representation Fir = HGCN(Hir).
+
+--- PAGE 5 ---
+We employ node feature matching to reduce the distance
+between fine-grained visual features and similar textual ex-
+pressions while increasing the disparity with dissimilar ex-
+
+=== FOUND METHOD at 22656 ===
+method against the following models:
+AlignTransformer (You et al. 2021), R2Gen (Chen et al.
+2020), R2GenCMN (Chen et al. 2021), PPKED (Liu et al.
+2021), KiUT (Huang, Zhang, and Zhang 2023), MMTN
+(Cao et al. 2023), COMG (Gu et al. 2024), MedM2G (Zhan
+et al. 2024), PromptMRG (Jin et al. 2024), M2KT (Yang
+et al. 2023), CvT2DistilGPT2 (Nicolson, Dowling, and
+Koopman 2023), RECAP (Hou et al. 2023a), ICON (Hou
+et al. 2024) and ORGAN (Hou et al. 2023b). These models
+represent a diverse range of architectures and methodologies
+in the field of medical report generation, spanning from deep
+learning-based encoder-decoder frameworks to multimodal
+fusion techniques, showcasing the variety and innovation in
+current research. Through comparisons with these state-of-
+the-art models, we aim to comprehensively evaluatethe per-
+formance and advantages of DAMPER in generating high-
+quality medical reports.
+Evaluation Metrics
+In the evaluation process, we used
+metrics: BLEU (B) (Papineni et al. 2002), METEOR (M)
+(Denkowski and Lavie 2011), and ROUGE-L (R-L) (Lin
+2004). The BLEU metric can reflect whether the generated
+reports use correct medical terminology and common ex-
+pressions. METEOR better reflects the semantic accuracy of
+the generated reports, rather than just literal matching, help-
+ing to assess whether the reports accurately convey medical
+concepts. ROUGE-L aids in evaluating whether the reports
+describe various medical findings and diagnoses in the cor-
+rect order.
+To further evaluat
+
+=== FOUND METHOD at 24681 ===
+Methods
+B-1
+B-2
+B-3
+B-4
+M
+R-L
+B-1
+B-2
+B-3
+B-4
+M
+R-L
+AlignTransformer (MICCAI’21)
+0.484
+0.313
+0.225
+0.173
+0.204
+0.379
+0.378
+0.235
+0.156
+0.112
+0.158
+0.283
+R2Gen (EMNLP’20)
+0.470
+0.304
+0.219
+0.165
+0.187
+0.371
+0.353
+0.218
+0.145
+0.103
+0.142
+0.277
+R2GenCMN (ACL’21)
+0.470
+0.304
+0.222
+0.170
+0.191
+0.358
+0.348
+0.206
+0.135
+0.094
+0.136
+0.266
+PPKED (CVPR’21)
+0.483
+0.315
+0.224
+0.168
+0.190
+0.376
+0.360
+0.224
+0.149
+0.106
+0.149
+0.284
+KiUT (CVPR’23)
+0.525
+0.360
+0.251
+0.185
+0.242
+0.409
+0.393
+0.243
+0.159
+0.113
+0.160
+0.285
+MMTN (AAAI’23)
+0.486
+0.321
+0.232
+0.175
+-
+0.375
+0.379
+0.238
+0.159
+0.116
+0.161
+0.283
+COMG (WACV’24)
+0.536
+0.378
+0.275
+0.206
+0.218
+0.383
+0.363
+0.235
+0.167
+0.124
+0.128
+0.290
+MedM2G (CVPR’24)
+0.533
+0.369
+0.278
+0.212
+-
+0.416
+0.412
+0.260
+0.179
+0.142
+-
+0.309
+DAMPER
+0.520
+0.383
+0.300
+0.225
+0.284
+0.397
+0.402
+0.284
+0.227
+0.193
+0.289
+0.301
+Figure 3: Visualization of report generation examples includes the input image in the first column, followed by the correspond-
+ing MeSH and report in the 2nd and 3rd columns. The 4th column shows the MeSH generated by DAMPER, while the 5th
+column backward shows reports from various models. MeSH are highlighted in red or green, with related sentences in the
+generated reports marked accordingly.
+Table 2: Comparison of CE metrics between DAMPER and
+related models on the MIMIC-CXR dataset.
+Methods
+Precision
+Recall
+F1
+R2Gen (EMNLP’20)
+0.333
+0.273
+0.276
+R2GenCMN (ACL’21)
+0.334
+0.275
+0.278
+CvT2DistilGPT2 (AIM’23)
+0.367
+0.418
+0.391
+KiUT (CVPR’23)
+0.371
+0.318
+0.3
+
+=== FOUND METHOD at 31391 ===
+Methods
+B-1
+B-2
+B-3
+B-4
+M
+R-L
+Disease Labels as MeSH
+0.486
+0.307
+0.213
+0.157
+0.187
+0.365
+Ground-truth MeSH (DAMPER)
+0.520
+0.383
+0.300
+0.225
+0.284
+0.397
+Labels as MeSH.” The results, shown in Table 4, indicate
+that this replacement leads to a decrease in model perfor-
+mance. However, compared to the results in Table 1, where
+MCG was omitted, the performance with generated MeSH,
+while inferior to DAMPER, still surpasses the case where
+MeSH is entirely discarded. This suggests that although gen-
+erated MeSH is less effective than the original, it still con-
+tributes positively to model performance.
+Table 5: Test Comparison Results for the Validation of Hy-
+pergraph effectiveness in DAMPER on the IU-Xray Dataset.
+Methods
+B-1
+B-2
+B-3
+B-4
+M
+R-L
+w/o Hypergraph + w/ Graph
+0.492
+0.343
+0.220
+0.158
+0.204
+0.369
+DAMPER
+0.520
+0.383
+0.300
+0.225
+0.284
+0.397
+The effectiveness of Hypergraph
+In this study, we uti-
+lized hypergraphs to establish correspondences between vi-
+sual region features and report phrases. To assess the supe-
+riority of hypergraphs over traditional graphs in this con-
+text, we replaced the hypergraphs in DAMPER with graphs,
+defining this condition as w/o Hypergraph + w/ Graph. The
+comparative results are presented in Table 5.
+The results indicate that replacing the original hyper-
+graphs with graphs leads to a decline in model performance,
+particularly noticeable in the METEOR metric. This high-
+lights the distinct advantage of hypergraphs in capturing
+medical terminology
+
+=== FOUND METHOD at 35601 ===
+Methods
+B-1
+B-2
+B-3
+B-4
+M
+R-L
+R2Gen (EMNLP’20)
+0.290
+0.157
+0.093
+0.061
+0.105
+0.208
+R2GenCMN (ACL’21)
+0.264
+0.140
+0.085
+0.056
+0.098
+0.212
+ORGAN (ACL’23)
+0.314
+0.180
+0.114
+0.078
+0.120
+0.234
+RECAP (EMNLP’23)
+0.321
+0.182
+0.116
+0.080
+0.120
+0.223
+ICON (EMNLP’24)
+0.337
+0.195
+0.126
+0.086
+0.129
+0.236
+DAMPER
+0.316
+0.195
+0.134
+0.091
+0.131
+0.209
+process. DAMPER consists of MCG and HFG stages to
+simulate physicians’ overall observation and detailed exam-
+ination, respectively. In MCG, the MCA module employs
+GAN to extract visual features corresponding to MeSH
+terms, which are input into the CMG to generate guiding
+MeSH. HFG constructs hypergraphs to model complex rela-
+tionships between modality elements, designing Intra-RCA
+and Inter-RCA modules to generate fine-grained visual fea-
+tures aligning with detailed report descriptions. Finally, the
+outputs from MCA, CMG, and Intra-RCA are integrated
+into HFG’s report decoder to produce accurate medical re-
+ports. Experiments conducted on the IU-Xray and MIMIC-
+CXR datasets demonstrate that DAMPER outperforms state-
+of-the-art methods. Ablation studies validate the effective-
+ness of each module, while visualization results highlight
+DAMPER’s ability to generate reports that accurately reflect
+pathological conditions. Furthermore, zero-shot testing re-
+sults reveal DAMPER’s strong generalization capability, as
+evidenced by its outstanding performance on the MIMIC-
+ABN test set.
+
+--- PAGE 9 ---
+Acknowledgments
+This work was supported by the Nat
+
+=== FOUND METHOD at 39701 ===
+Methods in
+Natural Language Processing, EMNLP, 1439–1449.
+Demner-Fushman, D.; Kohli, M. D.; Rosenman, M. B.;
+Shooshan, S. E.; et al. 2016. Preparing a collection of ra-
+diology examinations for distribution and retrieval. J. Am.
+Medical Informatics Assoc., 23(2): 304–310.
+Denkowski, M. J.; and Lavie, A. 2011.
+Meteor 1.3:
+Automatic Metric for Reliable Optimization and Evalu-
+ation of Machine Translation Systems.
+In Proceedings
+of the Sixth Workshop on Statistical Machine Translation,
+WMT@EMNLP, 85–91.
+Fu, K.; Liu, S.; Luo, X.; and Wang, M. 2021.
+Robust
+Point Cloud Registration Framework Based on Deep Graph
+Matching. In Proceedings of the IEEE/CVF Conference on
+Computer Vision and Pattern Recognition (CVPR), 8893–
+8902.
+Gao, Y.; Liu, J.; Xu, Z.; Wu, T.; Zhang, E.; Li, K.; Yang, J.;
+Liu, W.; and Sun, X. 2024. SoftCLIP: Softer Cross-Modal
+Alignment Makes CLIP Stronger.
+In Thirty-Eighth AAAI
+Conference on Artificial Intelligence, AAAI, 1860–1868.
+Gu, T.; Liu, D.; Li, Z.; and Cai, W. 2024. Complex Organ
+Mask Guided Radiology Report Generation. In IEEE/CVF
+Winter Conference on Applications of Computer Vision
+(WACV), 7980–7989.
+Hou, W.; Cheng, Y.; Xu, K.; Hu, Y.; Li, W.; and Liu, J.
+2024. ICON: Improving Inter-Report Consistency of Ra-
+diology Report Generation via Lesion-aware Mix-up Aug-
+mentation. arXiv preprint arXiv:2402.12844.
+Hou, W.; Cheng, Y.; Xu, K.; et al. 2023a. RECAP: Towards
+Precise Radiology Report Generation via Dynamic Disease
+Progression Reasoning. In Findings of th
+
+=== FOUND METHOD at 44701 ===
+Method for Automatic Evaluation of Machine Translation.
+In Proceedings of the 40th Annual Meeting of the Associa-
+tion for Computational Linguistics, 311–318.
+Qin, H.; and Song, Y. 2022. Reinforced Cross-modal Align-
+ment for Radiology Report Generation. In Findings of the
+Association for Computational Linguistics: ACL, 448–458.
+Radford, A.; Kim, J. W.; Hallacy, C.; Ramesh, A.; Goh, G.;
+Agarwal, S.; et al. 2021. Learning Transferable Visual Mod-
+els From Natural Language Supervision.
+In Proceedings
+of International Conference on Machine Learning (ICML),
+volume 139, 8748–8763.
+Shin, H.-C.; Roberts, K.; Lu, L.; Demner-Fushman, D.; et al.
+2016. Learning to Read Chest X-Rays: Recurrent Neural
+Cascade Model for Automated Image Annotation. In Pro-
+ceedings of the IEEE Conference on Computer Vision and
+Pattern Recognition (CVPR), 2497–2506.
+Smit, A.; Jain, S.; Rajpurkar, P.; Pareek, A.; Ng, A. Y.; and
+Lungren, M. P. 2020. Combining Automatic Labelers and
+Expert Annotations for Accurate Radiology Report Labeling
+Using BERT. In Proceedings of Conference on Empirical
+Methods in Natural Language Processing, EMNLP, 1500–
+1519.
+Tanida, T.; M¨uller, P.; Kaissis, G.; and Rueckert, D. 2023.
+Interactive and explainable region-guided radiology report
+generation. In Proceedings of the IEEE/CVF Conference on
+Computer Vision and Pattern Recognition (CVPR), 7433–
+7442.
+Xu, Q.; Luo, X.; Huang, C.; Liu, C.; Wen, J.; Wang, J.; and
+Xu, Y. 2024. HACDR-Net: Heterogeneous-Aware Convolu-
+tional Network fo
+
+=== FOUND METHOD at 48163 ===
+method and its verification.
+Artificial Intelligence in Medicine, 146: 102714.
+
+
+
+=== FOUND ARCHITECTURE at 9163 ===
+architecture that inte-
+grates coarse-grained and fine-grained alignments. This
+model emulates the process physicians follow when cre-
+ating reports, enabling the generation of comprehensive
+and accurate medical documentation.
+• To simulate the radiologist’s holistic observation, we de-
+signed the MCG stage, which aligns CXR visual features
+with MeSH information.
+• To simulate the detailed examination following the initial
+overall observation, we developed the HFG stage, align-
+ing image regions with report phrases while preserving
+the high-order relationships among image patches.
+• Experimental evaluations of DAMPER were conducted
+on two public datasets, IU-Xray and MIMIC-CXR. The
+results demonstrate that DAMPER outperforms state-of-
+the-art methods across various evaluation metrics.
+Related Work
+Cross-Modality Alignment
+Cross-modal alignment involves matching and integrating
+features from different modalities, such as images and text,
+to effectively combine visual and semantic information. Re-
+cent advancements in this field include techniques like CLIP,
+GAN, and graph matching.
+The CLIP model excels in coarse-grained feature in-
+teraction through pretraining on large image-text datasets,
+demonstrating strong zero-shot learning capabilities (Rad-
+ford et al. 2021). CLIP’s success has spurred further re-
+search, such as SoftCLIP (Gao et al. 2024) and mCLIP
+(Chen et al. 2023), which have refined alignment techniques.
+
+--- PAGE 3 ---
+Figure 2: Overview of the proposed DAMPER f
+
+=== FOUND ARCHITECTURE at 22527 ===
+architecture. The model
+was trained using the Adam optimizer with a batch size of
+16 and a learning rate of 1e-4.
+We compare our method against the following models:
+AlignTransformer (You et al. 2021), R2Gen (Chen et al.
+2020), R2GenCMN (Chen et al. 2021), PPKED (Liu et al.
+2021), KiUT (Huang, Zhang, and Zhang 2023), MMTN
+(Cao et al. 2023), COMG (Gu et al. 2024), MedM2G (Zhan
+et al. 2024), PromptMRG (Jin et al. 2024), M2KT (Yang
+et al. 2023), CvT2DistilGPT2 (Nicolson, Dowling, and
+Koopman 2023), RECAP (Hou et al. 2023a), ICON (Hou
+et al. 2024) and ORGAN (Hou et al. 2023b). These models
+represent a diverse range of architectures and methodologies
+in the field of medical report generation, spanning from deep
+learning-based encoder-decoder frameworks to multimodal
+fusion techniques, showcasing the variety and innovation in
+current research. Through comparisons with these state-of-
+the-art models, we aim to comprehensively evaluatethe per-
+formance and advantages of DAMPER in generating high-
+quality medical reports.
+Evaluation Metrics
+In the evaluation process, we used
+metrics: BLEU (B) (Papineni et al. 2002), METEOR (M)
+(Denkowski and Lavie 2011), and ROUGE-L (R-L) (Lin
+2004). The BLEU metric can reflect whether the generated
+reports use correct medical terminology and common ex-
+pressions. METEOR better reflects the semantic accuracy of
+the generated reports, rather than just literal matching, help-
+ing to assess whether the reports accurately convey medical
+concepts. ROUGE-L 
+
+=== FOUND IMPLEMENTATION DETAILS at 22333 ===
+Implementation Details
+We conducted our experiments
+using the PyTorch framework on a single NVIDIA V100
+GPU. Both the MeSH decoder and the report decoder uti-
+lize a 3-layer Transformer decoder architecture. The model
+was trained using the Adam optimizer with a batch size of
+16 and a learning rate of 1e-4.
+We compare our method against the following models:
+AlignTransformer (You et al. 2021), R2Gen (Chen et al.
+2020), R2GenCMN (Chen et al. 2021), PPKED (Liu et al.
+2021), KiUT (Huang, Zhang, and Zhang 2023), MMTN
+(Cao et al. 2023), COMG (Gu et al. 2024), MedM2G (Zhan
+et al. 2024), PromptMRG (Jin et al. 2024), M2KT (Yang
+et al. 2023), CvT2DistilGPT2 (Nicolson, Dowling, and
+Koopman 2023), RECAP (Hou et al. 2023a), ICON (Hou
+et al. 2024) and ORGAN (Hou et al. 2023b). These models
+represent a diverse range of architectures and methodologies
+in the field of medical report generation, spanning from deep
+learning-based encoder-decoder frameworks to multimodal
+fusion techniques, showcasing the variety and innovation in
+current research. Through comparisons with these state-of-
+the-art models, we aim to comprehensively evaluatethe per-
+formance and advantages of DAMPER in generating high-
+quality medical reports.
+Evaluation Metrics
+In the evaluation process, we used
+metrics: BLEU (B) (Papineni et al. 2002), METEOR (M)
+(Denkowski and Lavie 2011), and ROUGE-L (R-L) (Lin
+2004). The BLEU metric can reflect whether the generated
+reports use correct medical terminology and common ex-
+pressio
+
+=== FOUND EXPERIMENTAL SETUP at 21578 ===
+Experimental setup
+Datasets
+We conducted experiments on two publicly
+available datasets: IU-Xray (Demner-Fushman et al. 2016),
+MIMIC-CXR (Johnson et al. 2019). IU-Xray comprises
+7,470 pairs of CXR images and corresponding diagnostic re-
+ports, each including MeSH information. We used the same
+data preprocessing and splitting approach as R2Gen, with
+a training/validation/testing ratio of 7:1:2. MIMIC-CXR is
+the largest publicly available radiology dataset, containing
+377,110 CXR images and 227,835 reports from 65,379 pa-
+tients. We employed the official data split with a training/-
+validation/testing ratio of 7:1:2. Notably, MIMIC-CXR does
+not include MeSH, so we used the CheXpert (Smit et al.
+2020) labeler to generate MeSH based on the reports.
+Implementation Details
+We conducted our experiments
+using the PyTorch framework on a single NVIDIA V100
+GPU. Both the MeSH decoder and the report decoder uti-
+lize a 3-layer Transformer decoder architecture. The model
+was trained using the Adam optimizer with a batch size of
+16 and a learning rate of 1e-4.
+We compare our method against the following models:
+AlignTransformer (You et al. 2021), R2Gen (Chen et al.
+2020), R2GenCMN (Chen et al. 2021), PPKED (Liu et al.
+2021), KiUT (Huang, Zhang, and Zhang 2023), MMTN
+(Cao et al. 2023), COMG (Gu et al. 2024), MedM2G (Zhan
+et al. 2024), PromptMRG (Jin et al. 2024), M2KT (Yang
+et al. 2023), CvT2DistilGPT2 (Nicolson, Dowling, and
+Koopman 2023), RECAP (Hou et al. 2023a), ICON (Hou
+et al. 2024) a
+
+=== FOUND EXPERIMENTS at 2087 ===
+experiments on public datasets demonstrate
+the effectiveness of DAMPER in generating comprehensive
+and accurate medical reports, outperforming state-of-the-art
+methods across various evaluation metrics.
+Introduction
+Medical reports are essential for highlighting clinical find-
+ings and summarizing diagnoses and recommendations,
+which are crucial for clinical decision-making and patient
+management. However, the rise in medical imaging has
+made traditional manual report generation time-consuming
+and error-prone, potentially affecting patient safety. There-
+fore, automated medical report generation techniques have
+become increasingly important (Cao et al. 2023).
+With the widespread application of deep learning in the
+medical field, advancements have also been made in vari-
+ous tasks such as medical visual question answering (Huang
+and Gong 2024), rectal cancer diagnosis (Zhang et al. 2024),
+clinical decision making (Liu et al. 2024a) and retinal dis-
+ease detection (Luo et al. 2023, 2024; Xu et al. 2024). Au-
+tomatic algorithms for medical report generation have been
+Figure 1: (a) Represents the previous research works on fine-
+grained alignment. (b) Our research work on fine-grained
+alignment in this paper. (c) The motivation for our approach:
+Mimicking the real process of physicians writing reports.
+widely studied. Some methods (Shin et al. 2016; Yuan et al.
+2019) directly map input chest X-ray (CXR) images to med-
+ical reports using CNNs and RNNs, while others focus on
+effect
+
+=== FOUND EXPERIMENTS at 21619 ===
+experiments on two publicly
+available datasets: IU-Xray (Demner-Fushman et al. 2016),
+MIMIC-CXR (Johnson et al. 2019). IU-Xray comprises
+7,470 pairs of CXR images and corresponding diagnostic re-
+ports, each including MeSH information. We used the same
+data preprocessing and splitting approach as R2Gen, with
+a training/validation/testing ratio of 7:1:2. MIMIC-CXR is
+the largest publicly available radiology dataset, containing
+377,110 CXR images and 227,835 reports from 65,379 pa-
+tients. We employed the official data split with a training/-
+validation/testing ratio of 7:1:2. Notably, MIMIC-CXR does
+not include MeSH, so we used the CheXpert (Smit et al.
+2020) labeler to generate MeSH based on the reports.
+Implementation Details
+We conducted our experiments
+using the PyTorch framework on a single NVIDIA V100
+GPU. Both the MeSH decoder and the report decoder uti-
+lize a 3-layer Transformer decoder architecture. The model
+was trained using the Adam optimizer with a batch size of
+16 and a learning rate of 1e-4.
+We compare our method against the following models:
+AlignTransformer (You et al. 2021), R2Gen (Chen et al.
+2020), R2GenCMN (Chen et al. 2021), PPKED (Liu et al.
+2021), KiUT (Huang, Zhang, and Zhang 2023), MMTN
+(Cao et al. 2023), COMG (Gu et al. 2024), MedM2G (Zhan
+et al. 2024), PromptMRG (Jin et al. 2024), M2KT (Yang
+et al. 2023), CvT2DistilGPT2 (Nicolson, Dowling, and
+Koopman 2023), RECAP (Hou et al. 2023a), ICON (Hou
+et al. 2024) and ORGAN (Hou et al. 2023b). These models
+
+=== FOUND EXPERIMENTS at 28260 ===
+experiments on the IU-Xray
+
+--- PAGE 7 ---
+Table 3: Description of ablation conditions and experimental results on the IU-Xray dataset. A ✓ indicates inclusion.
+Status
+MCA
+CMG
+Intra-RCA
+Inter-RCA
+B-1
+B-2
+B-3
+B-4
+M
+R-L
+w/o CMG+ Intra-RCA + Inter-RCA
+✓
+0.467
+0.313
+0.210
+0.155
+0.188
+0.371
+w/o Intra-RCA + Inter-RCA
+✓
+✓
+0.501
+0.347
+0.221
+0.163
+0.230
+0.382
+w/o Inter-RCA
+✓
+✓
+✓
+0.511
+0.358
+0.260
+0.198
+0.260
+0.368
+w/o Intra-RCA
+✓
+✓
+✓
+0.507
+0.350
+0.258
+0.188
+0.258
+0.353
+w/o CMG
+✓
+✓
+✓
+0.497
+0.341
+0.216
+0.156
+0.193
+0.370
+w/o MCA
+✓
+✓
+✓
+0.478
+0.328
+0.214
+0.153
+0.186
+0.339
+w/o MCG
+✓
+✓
+0.471
+0.328
+0.215
+0.152
+0.203
+0.348
+DAMPER
+✓
+✓
+✓
+✓
+0.520
+0.383
+0.300
+0.225
+0.284
+0.397
+dataset. The results are presented in Table 3.
+The effectiveness of MCA
+Comparing the test results of
+w/o MCA with DAMPER reveals a significant performance
+decline on the IU-Xray dataset when the MCA module is
+removed, with the METEOR metric dropping by nearly 0.1.
+Additionally, when comparing w/o CMG with w/o MCG,
+w/o CMG outperforms w/o MCG in all metrics, with the
+most notable difference in the ROUGE-L. These results con-
+firm that the MCA module, by focusing on the overall fea-
+tures of the images, significantly enhances the model’s per-
+formance and the semantic quality of the generated reports.
+The effectiveness of CMG
+When comparing the perfor-
+mance of DAMPER with w/o CMG, we observed a signif-
+icant drop in performance after removing the CMG, with
+all metrics decreasing by at least 0.03 and METEOR drop-
+ping by 0.09
+
+=== FOUND EXPERIMENTS at 36562 ===
+Experiments conducted on the IU-Xray and MIMIC-
+CXR datasets demonstrate that DAMPER outperforms state-
+of-the-art methods. Ablation studies validate the effective-
+ness of each module, while visualization results highlight
+DAMPER’s ability to generate reports that accurately reflect
+pathological conditions. Furthermore, zero-shot testing re-
+sults reveal DAMPER’s strong generalization capability, as
+evidenced by its outstanding performance on the MIMIC-
+ABN test set.
+
+--- PAGE 9 ---
+Acknowledgments
+This work was supported by the National Natural Sci-
+ence Foundation of China under Grant 82261138629 and
+12326610; Guangdong Provincial Key Laboratory under
+Grant 2023B1212060076, and Shenzhen Municipal Sci-
+ence and Technology Innovation Council under Grant
+JCYJ20220531101412030; and in part by the project of
+Shenzhen Science and Technology Innovation Committee
+under Grant JCYJ20240813141424032, the Foundation for
+Young innovative talents in ordinary universities of Guang-
+dong under Grant 2024KQNCX042.
+References
+Brady, A. P. 2018. Radiology reporting—from Hemingway
+to HAL? Insights into imaging, 9: 237–246.
+Cao, Y.; Cui, L.; Yu, F.; Zhang, L.; Li, Z.; et al. 2022.
+KdTNet: Medical Image Report Generation via Knowledge-
+Driven Transformer.
+In Database Systems for Advanced
+Applications - 27th International Conference, DASFAA, vol-
+ume 13247 of Lecture Notes in Computer Science, 117–132.
+Cao, Y.; Cui, L.; Zhang, L.; Yu, F.; Li, Z.; and Xu, Y. 2023.
+MMTN: Multi-Modal Memory Transfo
+

@@ -1,0 +1,19 @@
+{
+  "macro_auc": 0.8135,
+  "per_label_auc": {
+    "Enlarged Cardiomediastinum": 0.5,
+    "Cardiomegaly": 0.8936,
+    "Lung Opacity": 0.8241,
+    "Lung Lesion": 0.6931,
+    "Edema": 0.8254,
+    "Consolidation": 0.8628,
+    "Pneumonia": 0.9408,
+    "Atelectasis": 0.7975,
+    "Pneumothorax": 0.8688,
+    "Pleural Effusion": 0.967,
+    "Pleural Other": 0.779,
+    "Fracture": 0.7634,
+    "Support Devices": 0.8277,
+    "No Finding": 0.8462
+  }
+}

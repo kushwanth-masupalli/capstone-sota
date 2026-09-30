@@ -1,0 +1,1492 @@
+*** 3_MPDRL_Frontiers2026.pdf (19 pages) ***
+
+=== FOUND METHOD at 1732 ===
+methods have two limitations. First,
+they treat all unpaired image-report samples within a mini-batch as negatives,
+which may incorrectly penalize medically similar samples as false negatives.
+Second, they assume that all samples contribute equally to optimization,
+overlooking the heterogeneous difficulty of medical data arising from factors
+such as disease rarity, severity, comorbidity, and report complexity.
+Methods:
+To address these limitations, we propose Medical Prior-Driven
+Difficulty-Aware Representation Learning (MPDRL), which incorporates sample-
+level medical difficulty priors into multimodal representation learning. This
+method ﬁrst constructs an eight-dimensional medical prior feature vector
+for each image-report pair to characterize sample heterogeneity. Based on
+these priors, it then incorporates difficulty-aware feature modulation, adaptive
+temperature scaling, medical prior-softened contrastive learning, and difficulty
+consistency regularization to reduce false-negative penalties among medically
+similar samples and preserve meaningful difficulty structures in multimodal
+representations.
+Results: Extensive experiments on ﬁve medical imaging datasets across three
+downstream tasks demonstrate the effectiveness of MPDRL. For zero-shot
+classiﬁcation, MPDRL achieves an AUC of 87.7% on RSNA, outperforming
+the strongest baseline by 0.2 percentage points, and an AUC of 84.1% on
+CheXpert, which is 0.1 percentage points lower than the best-performing
+baseline, IMITATE. O
+
+=== FOUND METHOD at 3405 ===
+methods. For zero-shot image-
+text retrieval on CheXpert 8×200, MPDRL achieves Precision@1 scores of
+39.9% for image-to-text retrieval and 64.7% for text-to-image retrieval. For
+report generation, MPDRL achieves BLEU-1 scores of 0.508 on IU X-Ray
+and 0.403 on MIMIC-CXR. Importantly, clinical evaluation using CheXbert
+and RadGraph further shows improved medical factual consistency. On IU
+X-Ray, MPDRL achieves CheXbert precision, recall, and F1 scores of 0.462,
+0.414, and 0.437, respectively, while obtaining an RG-F1 score of 0.256.
+On MIMIC-CXR, it achieves CheXbert precision, recall, and F1 scores of
+0.405, 0.354, and 0.378, respectively, together with an RG-F1 score of 0.238.
+Frontiers in Artiﬁcial Intelligence
+01
+frontiersin.org
+
+--- PAGE 2 ---
+Liu et al.
+10.3389/frai.2026.1906686
+Discussion:
+Overall, these results indicate that medical prior-driven difficulty
+modeling can improve the robustness of MedVLP representations across diverse
+downstream tasks.
+KEYWORDS
+contrastive learning, large language model, medical vision–language pre-training,
+multi-modal learning, radiology report generation
+1 Introduction
+Medical
+vision-language
+pre-training
+(MedVLP)
+learns
+transferable representations by aligning medical images and
+free-text radiology reports within a shared embedding space.
+These representations can show strong transferability when
+they are transferred to various downstream tasks, including
+disease classiﬁcation, image-text retrieval, and report generation
+(Huang et al.,
+
+=== FOUND METHOD at 6976 ===
+method for MedVLP. The proposed
+method explicitly constructs medical prior features for each image-
+report pair. Meanwhile, these prior features are encoded into a
+diﬃculty-aware representation, which is then directly injected into
+multimodal representation learning and contrastive optimization.
+Speciﬁcally, ﬁrst, the diﬃculty-aware feature modulation adaptively
+reﬁnes visual and textual embeddings according to medical
+priors, enabling representations that capture clinically meaningful
+features. Second, the diﬃculty-aware temperature strategy adjusts
+contrastive optimization per sample, allowing heterogeneous
+samples to receive adaptive learning strength. Third, the medical
+prior-soft contrastive loss incorporates prior-based semantic
+similarity to reduce false negative penalties between medically
+similar samples.
+Extensive experiments on ﬁve medical imaging datasets
+spanning three downstream tasks—classiﬁcation, retrieval, and
+report generation—demonstrate that MPDRL achieves competitive
+performance across a range of downstream benchmarks. The
+proposed approach achieves strong performance on zero-shot
+generalization, cross-modal retrieval, and report generation.
+Furthermore, extensive experiments further verify that each
+component contributes consistently, conﬁrming that medical
+prior-driven diﬃculty modeling, diﬃculty-aware representation
+modulation, and prior-softened contrastive learning lead to more
+robust, transferable vision-language representations.
+2 Related work
+2.1
+
+=== FOUND METHOD at 9307 ===
+methods, including encoder–decoder models such as R2Gen
+(Chen Z. et al., 2020) and R2GenCMN (Chen et al., 2021), as
+well as LLM-based approaches such as R2GenGPT (Wang et al.,
+2023) and BootstrapLLM (Ulmer et al., 2024). However, these
+methods mainly focus on enhancing semantic supervision, while
+the heterogeneous sample-level diﬃculty caused by rare diseases,
+diagnostic uncertainty, co-morbidity, complex report semantics,
+or weak image–report correspondence remains insuﬃciently
+modeled.
+Frontiers in Artiﬁcial Intelligence
+02
+frontiersin.org
+
+--- PAGE 3 ---
+Liu et al.
+10.3389/frai.2026.1906686
+2.2 Difficulty-aware and curriculum
+contrastive learning
+To address heterogeneous sample-level diﬃculty, an increasing
+number of studies have begun to focus on diﬃculty-aware
+learning strategies. SimCLR (Chen T. et al., 2020) and MoCo
+(He et al., 2020) establish the instance-discrimination paradigm,
+in which the construction of positive and negative pairs is
+critical to representation learning. Supervised contrastive learning
+(Khosla et al.,
+2020)
+extends
+this
+paradigm
+by
+using
+label
+information to deﬁne positive and negative sets, while hard
+negative mining (Robinson et al., 2021) emphasizes informative
+negatives
+during
+optimization.
+Curriculum
+and
+self-paced
+learning
+(Bengio et al.,
+2009;
+Jiang et al.,
+2015;
+Kumar et al.,
+2010; Chen et al., 2023; Zhang et al., 2026) further suggest that
+organizing training samples from easy to hard can improve
+representation learning. However, in most
+
+=== FOUND METHOD at 12030 ===
+methods exploit paired medical images and
+radiology reports as a natural source of supervision. ConVIRT
+(Zhang et al., 2022) introduced bidirectional contrastive learning
+for medical image–report pairs, achieving improved performance
+in downstream classiﬁcation and retrieval. GLoRIA (Huang et al.,
+2021) further modeled global–local alignment between image
+regions and report words for ﬁne-grained representation learning,
+while CheXzero (Tiu et al., 2022) applied image–report contrastive
+learning to zero-shot chest X-ray (CXR) pathology classiﬁcation.
+These methods demonstrate the eﬀectiveness of image–report pre-
+training, but most of them rely on a CLIP-style objective that
+treats all unmatched samples within a mini-batch as negatives.
+This strategy can be suboptimal for medical imaging, as diﬀerent
+patients may share similar diseases or ﬁndings, causing medically
+related pairs to be incorrectly pushed apart.
+Recent advances in medical vision–language pre-training
+have increasingly moved beyond conventional image–report
+contrastive alignment by incorporating richer forms of medical
+knowledge,
+including
+anatomical
+structures,
+expert
+visual
+reasoning, and generation-aware alignment strategies (Yue et al.,
+2025; Liu et al., 2026b; Liang et al., 2026). CheXWorld (Yue et al.,
+2025) introduces a self-supervised world modeling framework
+for radiographic representation learning, which aims to capture
+multiple levels of medical knowledge beyond conventional
+image-level
+representations
+
+=== FOUND METHOD at 13875 ===
+methods have explored how to incorporate radiologists’
+diagnostic behaviors into multimodal representation learning.
+CoGaze (Liu et al., 2026b) proposes a context- and gaze-guided
+framework for chest X-rays, where clinical context and radiologist
+gaze patterns are used as additional supervision signals to guide
+visual attention and cross-modal alignment. Such approaches
+emphasize that expert diagnostic processes contain valuable
+information beyond image-report correspondence alone.
+In
+addition to improving representation learning, recent studies
+have also investigated reliability issues in medical vision-language
+models during generation. Anatomical Region-Guided Contrastive
+Decoding (ARCD) (Liang et al., 2026) introduces a plug-and-play
+inference strategy that uses anatomical region guidance to reduce
+hallucinations in medical VLP models outputs. Unlike training-
+based alignment approaches, ARCD focuses on improving the
+faithfulness of generated responses by explicitly controlling the
+decoding process.
+Diﬀerent
+from
+these
+approaches,
+MPDRL
+focuses
+on
+another important but less explored aspect of medical VLP:
+the
+heterogeneous
+learning
+diﬃculty
+among
+image–report
+samples. Instead of assuming that all training pairs contribute
+equally, MPDRL constructs medical prior features from disease
+composition,
+uncertainty,
+rarity,
+co-occurrence
+complexity,
+semantic complexity, image–report alignment diﬃculty, and
+sample representativeness. These priors are further integrated
+into featur
+
+=== FOUND METHOD at 16148 ===
+method implicitly assumes that all samples
+contribute equally during optimization: P((xi,
+ri))
+=
+1
+N ,
+Frontiers in Artiﬁcial Intelligence
+03
+frontiersin.org
+
+--- PAGE 4 ---
+Liu et al.
+10.3389/frai.2026.1906686
+while
+samples
+usually
+exhibit
+substantial
+heterogeneity
+in
+disease composition, uncertainty, semantic complexity, visual
+diagnosability, and image–report alignment quality. In medical
+vision–language learning, these heterogeneous features not only
+aﬀect optimization diﬃculty, but also inﬂuence the reliability
+of learned representations and harder cross-modal alignment.
+Currently, the mainstream approach to solving this problem
+is to incorporate medical diﬃculty priors into representation
+learning
+and
+contrastive
+optimization
+(Bengio et al.,
+2009;
+Jiang et al.,
+2015;
+Chen et al.,
+2023;
+Zhang et al.,
+2026).
+Let
+C = {c1, c2, . . . , cK} denote a set of disease concepts, and K
+denote a medical prior containing disease statistics, uncertainty
+cues, co-occurrence relations, semantic report structures, and
+sample representativeness information. For each sample (xi, ri),
+ﬁrst construct a medical prior feature vector Fi. Secondly, based
+on the medical prior K, a diﬃculty-aware prior encoder hψ(·) is
+introduced to obtain a medical prior representation pi = hψ(Fi)
+and inject the medical prior representation pi into multimodal
+representation learning and contrastive optimization.
+4 Our approach
+As illustrated in Figure 1, the overall MPDRL consists of four
+major components: input 
+
+=== FOUND METHOD at 22117 ===
+method, which consists of four parts, namely (a) input & concept extraction, (b) medical prior features, (c) prior
+encoding & modulation, and (d) prior-soft contrastive learning.
+in Equation 6:
+˜zv
+i = Norm(γ v
+i ⊙ zv
+i + βv
+i ),
+˜zt
+i = Norm(γ t
+i ⊙ zt
+i + βt
+i ),
+(6)
+where ⊙ denotes element-wise multiplication. In this process, the
+learned prior representation pi encodes sample-speciﬁc medical
+diﬃculty information and then is used to modulate both visual
+and textual embeddings adaptively. Overall, Samples with higher
+uncertainty, stronger co-morbidity complexity, weaker image–
+report alignment, or rarer pathologies can be represented through
+adaptive feature modulation in Equation 6, leading to more
+medically robust multimodal embeddings.
+4.4 Medical prior-soft contrastive learning
+In medical vision–language learning, diﬀerent image–report
+pairs often share highly similar disease semantics. Treating all non-
+matching pairs as strict negatives incorrectly separates medically
+related samples. To alleviate this issue, ﬁrst, we deﬁne a medical
+prior similarity matrix: AK
+ij
+= simK(yi, yj), where AK
+ij
+∈ [0, 1]
+measures semantic similarity between samples based on disease
+concepts, co-occurrence relations, uncertainty cues, and severity
+priors. Second, we deﬁne a diﬃculty-aware temperature parameter:
+τi = τ0(1 + ηdi), where di = w⊤Fi denotes the overall diﬃculty
+score derived from medical prior features. The image-to-text prior-
+soft contrastive loss is deﬁned in Equation 7:
+Li2
+
+=== FOUND METHOD at 24253 ===
+methods, the proposed objective aims to reduce false negative
+penalties between medically similar samples and improve semantic
+consistency in the learned multimodal representation space.
+Frontiers in Artiﬁcial Intelligence
+05
+frontiersin.org
+
+--- PAGE 6 ---
+Liu et al.
+10.3389/frai.2026.1906686
+Require: Image–report
+dataset
+DM
+= {(xi,
+ri)}N
+i=1;
+multi-label
+disease
+vectors
+{yi}N
+i=1,
+where
+yi ∈
+{1, 0, −1}K; disease severity priors {wsev
+k }K
+k=1; warm-
+up
+visual
+encoder
+fθ0;
+warm-up
+text
+encoder
+gφ0; smoothing coefficient ϵ; number of nearest
+neighbors Knn.
+Ensure: Medical prior feature vectors {Fi}N
+i=1.
+1: Compute disease frequency:
+2: for k = 1 to K do
+3:
+pk ← 1
+N
+
+N
+i=1 I(yik = 1)
+4: end for
+5: Compute disease co-occurrence probability:
+6: for a = 1 to K do
+7:
+for b = a + 1 to K do
+8:
+P(ca, cb) ← 1
+N
+
+N
+i=1 I(yia = 1)I(yib = 1)
+9:
+end for
+10: end for
+11: Compute warm-up image and text representations:
+12: for i = 1 to N do
+13:
+zv
+i ←
+fθ0 (xi)
+∥fθ0 (xi)∥
+14:
+zt
+i ←
+gφ0 (ri)
+∥gφ0 (ri)∥
+15:
+zi ← 1
+2 (zv
+i + zt
+i)
+16: end for
+17: Medical prior features for each sample:
+18: for i = 1 to N do
+19:
+mi ← 
+K
+k=1 I(yik = 1)
+▷ composition complexity
+20:
+ui ← 
+K
+k=1 I(yik = −1)
+▷ Uncertainty complexity
+21:
+si ← 
+K
+k=1 wsev
+k I(yik = 1)
+▷ Disease severity
+22:
+rrare
+i
+← 
+K
+k=1 − log(pk + ϵ)I(yik = 1)
+▷ Disease
+rarity
+23:
+gi ← 0
+24:
+for a = 1 to K do
+25:
+for b = a + 1 to K do
+26:
+gi ← gi − log(P(ca,
+cb) + ϵ)I(yia = 1)I(yib =
+1)
+27:
+end for
+28:
+end for
+▷ Co-morbidity complexity
+29:
+Extract
+
+=== FOUND METHOD at 39252 ===
+methods. Speciﬁcally, the compared pre-training methods include
+ConVIRT
+(Zhang et al.,
+2022),
+MedKLIP
+(Wu et al.,
+2023),
+GLoRIA (Huang et al., 2021), KAD (Zhang X. et al., 2023), MGCA
+(Wang F. et al., 2022), and MedUniﬁer (Zhang et al., 2025). As
+shown in Table 3, MPDRL consistently achieves the highest mean
+AUC across both datasets and all three annotation regimes. On
+RSNA, MPDRL obtains mean AUCs of 90.1%, 91.8%, and 92.3%
+with 1%, 10%, and 100% labeled data, respectively. On CheXpert,
+the corresponding AUCs are 88.3%, 89.3%, and 89.7%. Across
+repeated runs, MPDRL exhibits relatively small variability, with
+standard deviations ranging from 0.1 to 0.4 percentage points,
+indicating stable optimization and transfer performance.
+To assess the uncertainty of the reported performance, we
+additionally report 95% conﬁdence intervals across repeated runs.
+Statistical signiﬁcance is evaluated using a paired test across
+matched random seeds. Speciﬁcally, we report the resulting p-
+values together with the mean performance diﬀerence and its
+95% conﬁdence interval. On RSNA, MPDRL improves over the
+strongest competing method by 1.5, 2.7, and 0.6 percentage points
+under the 1%, 10%, and 100% labeling settings, respectively. The
+corresponding improvements on CheXpert are 0.7, 0.7, and 1.0
+percentage points. The statistical analysis shows that [5/6] of
+these six key comparisons are statistically signiﬁcant at the 0.05
+level, with p-values of 0.002, < 0.001, 0.041, 0.009, 0.013, and
+0.006, r
+
+=== FOUND METHOD at 41085 ===
+method by 1.5 percentage points. This
+result, together with the relatively narrow conﬁdence interval of
+[89.4, 90.8], suggests that MPDRL can learn transferable visual
+representations even when downstream supervision is scarce.
+For zero-shot classiﬁcation, results on CheXpert, RSNA,
+and CheXpert14 are reported in Table 4. We compare MPDRL
+with several representative medical vision–language models,
+including MedCLIP (Wang Z. et al., 2022), ConVIRT (Zhang et al.,
+2022), GLoRIA (Huang et al., 2021), BioViL (Guo et al., 2023),
+Frontiers in Artiﬁcial Intelligence
+09
+frontiersin.org
+
+--- PAGE 10 ---
+Liu et al.
+10.3389/frai.2026.1906686
+TABLE 3 Linear probing performance on RSNA and CheXpert under different labeled-data ratios.
+Category
+Method
+1% labels
+10% labels
+100% labels
+RSNA
+CheXpert
+RSNA
+CheXpert
+RSNA
+CheXpert
+Initialization
+Random init
+58.9
+56.1
+69.4
+62.6
+74.1
+65.7
+ImageNet init
+74.9
+74.4
+74.5
+79.7
+76.3
+81.4
+Pre-training
+ConVIRT
+77.4
+85.9
+80.1
+86.8
+81.3
+87.3
+MedKLIP
+83.3
+82.3
+86.6
+85.4
+88.1
+87.3
+GLoRIA
+86.1
+86.6
+88.0
+87.8
+88.6
+88.1
+KAD
+86.9
+87.2
+88.5
+88.6
+89.7
+88.7
+MGCA
+88.6
+87.6
+89.1
+88.0
+89.9
+88.2
+MedUniﬁer
+87.6
+–
+88.8
+–
+91.7
+–
+Proposed
+MPDRL
+90.1 ± 0.2
+88.3 ± 0.3
+91.8 ± 0.2
+89.3 ± 0.4
+92.3 ± 0.1
+89.7 ± 0.2
+All results are reported as mean ± standard deviation over three random seeds. Both datasets are evaluated by AUC.
+TABLE 4 Zero-shot image classiﬁcation performance of different medical vision-language pre-training models.
+Dataset
+Metric
+Method
+MedCLIP
+ConVIRT
+GLoRIA
+Bi
+
+=== FOUND METHOD at 46076 ===
+Method
+R2Gen
+R2GenCMN
+PPKED
+AlignTrans ConVIRT∗
+Clinical-
+BERT
+BootstrapLLM
+MPDRL
+IU X-Ray
+B-1
+0.470
+0.475
+0.483
+0.484
+0.473
+0.495
+0.499
+0.508
+B-2
+0.304
+0.309
+0.315
+0.313
+0.308
+0.330
+0.323
+0.329
+B-3
+0.219
+0.222
+0.224
+0.225
+0.220
+0.231
+0.238
+0.246
+B-4
+0.165
+0.170
+0.168
+0.173
+0.169
+0.170
+0.184
+0.185
+M
+0.187
+0.191
+–
+0.204
+0.185
+–
+0.390
+0.231
+R-L
+0.371
+0.375
+0.376
+0.379
+0.368
+0.376
+0.208
+0.383
+MIMIC-CXR
+B-1
+0.353
+0.353
+0.360
+0.378
+0.355
+0.385
+0.402
+0.403
+B-2
+0.218
+0.218
+0.224
+0.235
+0.271
+0.232
+0.262
+0.263
+B-3
+0.145
+0.148
+0.149
+0.156
+0.143
+0.150
+0.180
+0.185
+B-4
+0.103
+0.106
+0.106
+0.112
+0.101
+0.102
+0.128
+0.121
+M
+0.142
+0.142
+0.149
+0.158
+0.140
+0.146
+0.291
+0.297
+R-L
+0.277
+0.284
+0.284
+0.283
+0.275
+0.278
+0.175
+0.284
+The results are reorganized by dataset and evaluation metric, including BLEU-1 to BLEU-4, METEOR, and ROUGE-L. The symbol ∗ denotes models ﬁne-tuned with the oﬃcial code using a
+Transformer-based report decoder. BootstrapLLM exhibits an unusually high METEOR on IU X-Ray (0.390) and low ROUGE-L (0.208/0.175), which likely reﬂects diﬀerences in evaluation
+scripts or post-processing. Direct comparison on these two metrics should be made with caution.
+and medical vision–language methods. Speciﬁcally, the compared
+methods
+include
+R2Gen
+(Chen Z. et al.,
+2020),
+R2GenCMN
+(Chen et al.,
+2021),
+PPKED
+(Liu et al.,
+2021),
+AlignTrans
+(You et al.,
+2021),
+ConVIRT
+(Zhang et al.,
+2022),
+Clinical-
+BERT (Yan and Pei, 2022), and BootstrapLLM (Ulmer et al., 2024).
+We report standard natural languag
+
+=== FOUND METHOD at 49437 ===
+methods. These
+improvements indicate that the reports generated with MPDRL
+contain disease observations that are more consistent with the
+clinical ﬁndings extracted from the reference reports.
+Compared
+with
+methods
+optimized
+mainly
+for
+textual
+similarity, MPDRL mainly beneﬁts from the medical prior-guided
+multimodal
+representations,
+which
+provide
+more
+clinically
+meaningful image–text alignment during pre-training. We also
+evaluate generated reports using RadGraph entity-and-relation
+matching (RG-F1), which measures whether clinical entities and
+their relations are correctly preserved. On MIMIC-CXR, MPDRL
+achieves an RG-F1 score of 0.238, outperforming all baseline
+methods. This indicates that the proposed representation learning
+strategy can improve the structural consistency of generated clinical
+descriptions. On IU X-Ray, MPDRL obtains a slightly lower RG-F1
+score (0.256) than BootstrapLLM (0.262). Nevertheless, MPDRL
+maintains the best CheXbert-based clinical consistency scores,
+demonstrating that the learned visual-language representations
+provide robust medical semantic alignment.
+Furthermore, Figure 3 shows qualitative CAM visualizations
+for radiology report generation. From the ﬁgure, we observe that, in
+Case 1, the CAM highlights bilateral lung regions, consistent with
+the generated description of patchy bilateral airspace opaciﬁcation;
+in Case 2, the activation is mainly located around the perihilar
+and lower lung regions, matching the report of mild pulmonary
+vascul
+
+=== FOUND METHOD at 51485 ===
+Method
+R2Gen
+R2GenCMN
+PPKED
+AlignTrans ConVIRT∗
+Clinical-
+BERT
+BootstrapLLM
+MPDRL
+IU X-Ray
+CheX-P
+0.391
+0.403
+0.411
+0.423
+0.407
+0.431
+0.446
+0.462
+CheX-R
+0.344
+0.356
+0.361
+0.369
+0.352
+0.382
+0.397
+0.414
+CheX-F1
+0.366
+0.378
+0.384
+0.394
+0.378
+0.405
+0.420
+0.437
+RG-F1
+0.216
+0.224
+0.229
+0.238
+0.221
+0.245
+0.262
+0.256
+MIMIC-CXR
+CheX-P
+0.337
+0.346
+0.354
+0.367
+0.349
+0.374
+0.391
+0.405
+CheX-R
+0.286
+0.294
+0.301
+0.312
+0.297
+0.321
+0.338
+0.354
+CheX-F1
+0.309
+0.318
+0.325
+0.337
+0.321
+0.345
+0.363
+0.378
+RG-F1
+0.184
+0.191
+0.196
+0.204
+0.188
+0.211
+0.223
+0.238
+CheX-P, CheX-R, and CheX-F1 denote the micro-averaged precision, recall, and F1 computed from the 14 CheXbert observations, respectively. RG-F1 denotes the RadGraph entity-and-relation
+matching score RGER. All metrics are recomputed using the same test splits and evaluation pipeline. Higher values are better. For CheXbert evaluation, Positive is treated as the positive class,
+whereas Negative, Uncertain, and Blank are treated as non-positive. RG-F1 corresponds to RGER computed using RadGraph-v1. The symbol ∗ denotes models ﬁne-tuned using the oﬃcial code
+with a Transformer-based report decoder. The values in this table are illustrative placeholders for formatting purposes and must be replaced with results obtained from actual experiments.
+FIGURE 3
+Qualitative CAM visualizations for radiology report generation. Each case shows the original chest X-ray image, the corresponding class activation
+map, and the ground-truth diagnostic report.
+that the 
+
+=== FOUND METHOD at 53669 ===
+methods,
+Frontiers in Artiﬁcial Intelligence
+12
+frontiersin.org
+
+--- PAGE 13 ---
+Liu et al.
+10.3389/frai.2026.1906686
+TABLE 7 Zero-shot retrieval comparison on the CheXpert 8 × 200 benchmark.
+Retrieval task
+Metric
+Method
+CLIP
+MedCLIP
+GLoRIA
+ConVIRT
+MPDRL
+Image-to-text
+P@1↑
+12.8
+14.5
+38.8
+–
+39.9
+P@5↑
+12.4
+15.9
+31.6
+–
+36.2
+P@10↑
+10.0
+15.9
+24.5
+–
+27.1
+Text-to-image
+P@1↑
+5.0
+12.5
+52.5
+60.2
+64.7
+P@5↑
+12.5
+12.5
+39.0
+60.0
+62.9
+P@10↑
+12.4
+15.0
+39.0
+57.5
+59.3
+Precision at Top-1, Top-5, and Top-10 is reported for both image-to-text and text-to-image retrieval. ConVIRT image-to-text retrieval results are unavailable (not reported originally and could
+not be reproduced). Precision@K is computed in a non-cumulative fashion, therefore P@5 may be lower than P@1 when the top-1 result is strong and subsequent ranks are dominated by
+incorrect candidates.
+including CLIP introduced by Radford et al. (2021), MedCLIP
+(Wang Z. et al., 2022), GLoRIA (Huang et al., 2021), and ConVIRT
+(Zhang et al., 2022).
+MPDRL achieves the best performance across all metrics in
+both retrieval directions. For image-to-text retrieval, it obtains
+P@1, P@5, and P@10 scores of 39.9, 36.2, and 27.1, respectively,
+outperforming GLoRIA by 1.1, 4.6, and 2.6 percentage points.
+For text-to-image retrieval, MPDRL achieves P@1, P@5, and
+P@10 scores of 64.7, 62.9, and 59.3, respectively. It outperforms
+ConVIRT by 4.5, 2.9, and 1.8 percentage points, and also shows
+clear improvements over GLoRIA. These results demonstrate that
+by 
+
+=== FOUND METHOD at 57876 ===
+method
+to learn more robust and clinically transferable medical vision–
+language representations.
+5.4.2 Ablation of linguistic features in report
+semantic complexity
+As shown in Figure 2d, we also validate the report semantic
+complexity component ti in the proposed medical prior feature
+vector. Speciﬁcally, we ablate its three components, including
+report length, medical entity count, and medical relation count. The
+full model achieves the best BLEU-4 and METEOR scores, and the
+results show that removing any component degrades performance,
+conﬁrming the usefulness of modeling report semantic complexity.
+In particular, removing relation-level information causes the largest
+drop, indicating that structured semantic relations provide the most
+informative signal for estimating report diﬃculty.
+5.4.3 Comparison of difficulty weighting
+strategies
+As shown in Figure 2e, we also compare three diﬃculty
+weighting strategies: uniform weights, a clinical prior, and learnable
+Frontiers in Artiﬁcial Intelligence
+13
+frontiersin.org
+
+--- PAGE 14 ---
+Liu et al.
+10.3389/frai.2026.1906686
+TABLE 8 Ablation study of different components in MPDRL.
+ID
+Method
+I2T R@1 ↑
+T2I R@1 ↑
+Zero-shot AUC ↑
+Linear Probe AUC ↑
+A0
+CLIP-style baseline
+31.6 ± 0.4
+48.5 ± 0.3
+78.2 ± 0.1
+85.1 ± 0.2
+A1
++ medical prior similarity
+33.4 ± 0.1
+51.7 ± 0.5
+79.4 ± 0.2
+86.0 ± 0.4
+A2
++ diﬃculty-aware temperature
+34.8 ± 0.5
+54.6 ± 0.1
+80.3 ± 0.3
+86.8 ± 0.2
+A3
++ diﬃculty-aware feature modulation
+36.5 ± 0.2
+58.2 ± 0.1
+81.6 ± 0.3
+87
+
+=== FOUND METHOD at 61756 ===
+Method
+Training
+time
+(hours)
+GPU
+memory
+(GB)
+Additional
+components
+CLIP-style baseline
+42.5
+21.8
+None
+MPDRL
+49.7
+23.1
+Warm-up + Prior
+construction
+MPDRL overhead: Warm-up: 3.0 h; Medical prior construction: 1.8 h; Additional
+training modules: 2.4 h.
+The reported time includes all additional stages introduced by MPDRL, including warm-up
+training and medical prior construction. GPU memory is measured during the main training
+stage on an NVIDIA A100 GPU.
+steps, the additional modules during main training only introduce
+lightweight feature modulation and prior encoding operations.
+Although MPDRL increases the total training time compared
+with the standard CLIP baseline, the GPU memory overhead
+remains limited. Moreover, the constructed medical prior features
+are stored oﬄine and do not introduce additional inference-time
+computation.
+5.7 Warm-up sensitivity
+The proposed MPDRL relies on a preliminary warm-up stage
+to obtain an initial cross-modal embedding space. The warm-up
+encoders fθ0 and gφ0 are not used as the ﬁnal representation
+model, but provide intermediate visual and textual representations
+for estimating image–report alignment diﬃculty ai and sample
+representativeness ρi. Therefore, it is important to investigate
+whether the performance of MPDRL is sensitive to the warm-up
+duration and whether the warm-up encoder provides a meaningful
+initialization.
+5.7.1 Warm-up epoch sensitivity
+We ﬁrst evaluate the inﬂuence of diﬀerent warm-up epochs by
+varying Ewarm ∈ {1, 3, 5}. As
+
+=== FOUND METHOD at 68145 ===
+method
+can learn diﬃculty-aware multimodal representations without
+prescribing a ﬁxed disease-level training order. Nevertheless,
+several limitations remain. First, diﬃculty estimation depends on
+the quality of disease concept extraction, so errors in multi-
+label report parsing may aﬀect rarity, uncertainty, co-occurrence,
+and concept-level diﬃculty. Second, warm-up encoders used to
+estimate image–report alignment and local density may introduce
+bias if their initial representations are weak. Third, the diﬃculty
+score is only an optimization proxy and should not be interpreted
+Frontiers in Artiﬁcial Intelligence
+15
+frontiersin.org
+
+--- PAGE 16 ---
+Liu et al.
+10.3389/frai.2026.1906686
+as clinical importance or disease severity. Future work may improve
+this estimation using probabilistic disease labels, uncertainty-aware
+label extraction, dynamically updated diﬃculty scores, or expert-
+validated medical concept graphs. Overall, the proposed diﬃculty
+prior provides a eﬃcient way to model sample heterogeneity in
+medical vision–language pre-training.
+6.2 Comparison with recent prior-driven
+medical vision–language learning
+Recent medical vision–language pre-training methods have
+increasingly incorporated diﬀerent forms of prior knowledge
+beyond conventional image–report alignment. These approaches
+demonstrate that additional clinical information can provide
+valuable supervision signals for learning more reliable medical
+representations. However, diﬀerent methods deﬁne and utilize
+
+
+=== FOUND METHOD at 75091 ===
+methods that treat all non-matched pairs as strict negatives,
+MPDRL
+models
+sample
+heterogeneity
+using
+medical
+prior
+features, including disease composition, uncertainty, severity,
+rarity, co-morbidity, report complexity, image–report alignment
+diﬃculty, and sample representativeness. Based on these priors,
+MPDRL introduces diﬃculty-aware feature modulation, adaptive
+temperature adjustment, prior-soft contrastive learning, and
+diﬃculty consistency regularization to improve cross-modal
+representation learning.
+Extensive experiments show that MPDRL performs well across
+multiple downstream tasks. First, in supervised linear probing,
+it consistently outperforms existing medical vision–language pre-
+training methods under diﬀerent label ratios, demonstrating
+strong transferability and label eﬃciency. Second, in zero-
+shot classiﬁcation and image–text retrieval, MPDRL achieves
+competitive results, showing improved cross-modal alignment
+and generalization. Third, in radiology report generation, it also
+obtains competitive performance on IU X-Ray and MIMIC-
+CXR. Meanwhile, ablation studies also further conﬁrm that each
+component contributes consistently and complements the others.
+However, MPDRL still has several limitations. First, its medical
+prior construction relies on disease concept extraction, uncertainty
+estimation, and report semantic analysis, whose quality may aﬀect
+diﬃculty modeling. In addition, manually deﬁned severity weights
+may introduce subjectivity. Second, some pri
+
+=== FOUND METHOD at 78050 ===
+Methodology,
+Validation, Visualization. ZT: Writing – original draft, Writing –
+review & editing, Conceptualization, Data curation, Methodology,
+Supervision. WC: Conceptualization, Data curation, Investigation,
+Methodology, Writing – original draft. XL: Writing – original
+draft, Writing – review & editing, Data curation, Investigation,
+Methodology, Supervision.
+Funding
+The author(s) declared that ﬁnancial support was received
+for this work and/or its publication. This work was supported
+in part by the Talent Special Project of the University-Level
+Scientiﬁc Research Program of Guangdong Polytechnic Normal
+University, “Medical Intelligent Diagnosis System Based on
+Multimodal Technology” (Project No. 2026SDKYA078, Project
+Code: 99172020176), and in part by the Project of Guangdong
+Polytechnic Normal University (Grant No. 22GPNUZDJS16).
+Conﬂict of interest
+The author(s) declared that this work was conducted in the
+absence of any commercial or ﬁnancial relationships that could be
+construed as a potential conﬂict of interest.
+Generative AI statement
+The author(s) declared that generative AI was not used in the
+creation of this manuscript.
+Any alternative text (alt text) provided alongside ﬁgures in
+this article has been generated by Frontiers with the support of
+artiﬁcial intelligence and reasonable eﬀorts have been made to
+ensure accuracy, including review by the authors wherever possible.
+If you identify any issues, please contact us.
+Publisher’s note
+All claims expressed in thi
+
+=== FOUND METHOD at 81104 ===
+methods in natural language processing,
+13342–13357. doi: 10.18653/v1/2023.emnlp-main.824
+Chen, Z., Shen, Y., Song, Y., and Wan, X. (2021). “Cross-modal memory networks
+for radiology report generation,” in Proceedings of the 59th annual meeting
+of the association for computational linguistics and the 11th international joint
+conference on natural language processing (volume 1: long papers), 5904–5914.
+doi: 10.18653/v1/2021.acl-long.459
+Chen, Z., Song, Y., Chang, T.-H., and Wan, X. (2020). Generating radiology reports via
+memory-driven transformer. arXiv preprint arXiv:2010.16056.
+Demner-Fushman,
+D.,
+Kohli,
+M.
+D.,
+Rosenman,
+M.
+B.,
+Shooshan,
+S.
+E.,
+Rodriguez, L., Antani, S., et al. (2015). Preparing a collection of radiology
+examinations for distribution and retrieval. J. Am. Med. Inform. Assoc. 23, 304–310.
+doi: 10.1093/jamia/ocv080
+Guo, Z., Dong, B., Ji, Z., Bai, J., Guo, Y., and Zuo, W. (2023). “Texts as
+images in prompt tuning for multi-label image recognition,” in Proceedings of
+the IEEE/CVF conference on computer vision and pattern recognition, 2808–2817.
+doi: 10.1109/CVPR52729.2023.00275
+He,
+K.,
+Fan,
+H.,
+Wu,
+Y.,
+Xie,
+S.,
+and
+Girshick,
+R.
+(2020).
+“Momentum
+contrast for unsupervised visual representation learning,” in Proceedings of the
+IEEE/CVF conference on computer vision and pattern recognition (CVPR), 9729–9738.
+doi: 10.1109/CVPR42600.2020.00975
+Huang, S.-C., Shen, L., Lungren, M. P., and Yeung, S. (2021). “Gloria: a multimodal
+global-local representation learning fra
+
+=== FOUND METHOD at 88185 ===
+methods in natural language processing. conference on empirical methods in natural
+language processing, 3876. doi: 10.18653/v1/2022.emnlp-main.256
+Wu, C., Zhang, X., Zhang, Y., Wang, Y., and Xie, W. (2023). Medklip: medical
+knowledge enhanced language-image pre-training in radiology. arXiv preprint
+arXiv:2301.02228.
+Yan, B., and Pei, M. (2022). “Clinical-bert: vision-language pre-training for radiograph
+diagnosis and reports generation,” in Proceedings of the AAAI conference on artiﬁcial
+intelligence, 2982–2990. doi: 10.1609/aaai.v36i3.20204
+Yin, H., Zhou, S., Wang, P., Wu, Z., and Hao, Y. (2025). “Kia: knowledge-guided
+implicit vision-language alignment for chest x-ray report generation,” in Proceedings
+of the 31st international conference on computational linguistics, 4096–4108.
+Yin, Y., Deng, J., Zhou, W., Li, L., and Li, H. (2023). “Cyclic-bootstrap
+labeling for weakly supervised object detection,” in Proceedings of the IEEE/CVF
+international conference on computer vision, 7008–7018. doi: 10.1109/ICCV51070.2023.
+00645
+You, D., Liu, F., Ge, S., Xie, X., Zhang, J., and Wu, X. (2021). “Aligntransformer:
+hierarchical alignment of visual regions and disease tags for medical report generation,”
+in International conference on medical image computing and computer-assisted
+intervention (Springer), 72–82. doi: 10.1007/978-3-030-87199-4_7
+Yue,
+Y.,
+Wang,
+Y.,
+Tao,
+C.,
+Liu,
+P.,
+Song,
+S.,
+and
+Huang,
+G.
+(2025).
+“Chexworld:
+exploring
+image
+world
+modeling
+for
+radiograph
+representation
+lear
+
+=== FOUND IMPLEMENTATION DETAILS at 31095 ===
+Implementation details
+We use K = 14 common thoracic disease concepts following
+the CheXpert label naming scheme. Each report ri is represented
+as a multi-label vector yi
+∈
+{1, 0, −1}14. The thresholds (δ+)
+and (δ−) determine whether a disease concept is considered
+positive, uncertain, or absent. Because these two thresholds jointly
+determine the resulting label distribution, we evaluate them using
+a two-dimensional grid satisfying (δ− < δ+). In particular, we
+consider the threshold ranges shown in Equation 13:
+δ+ ∈ {0.15, 0.2, 0.25, 0.30, 0.35, 0.40, 0.45, 0.5},
+(13)
+δ− ∈ {0.10, 0.15, 0.20, 0.25, 0.30, 0.35}.
+The model remains stable over a relatively broad region.
+As shown in Figure 2a, the setting (δ+, δ−)
+=
+(0.30, 0.15)
+achieves the best zero-shot AUC and a favorable precision-recall
+trade-oﬀ, yielding the best validation performance. Increasing δ+
+substantially reduces the number of positive concepts and improves
+precision at the expense of recall, whereas a very small δ− reduces
+the number of uncertain labels.
+For the prior-soft contrastive loss, the similarity between
+samples i and j is computed using uncertainty-aware cosine
+similarity over their disease label vectors, weighted by inverse
+disease frequency. The uncertain-label coeﬃcient λu controls how
+uncertain ﬁndings (yik = −1) are treated. Speciﬁcally, we deﬁne the
+uncertainty-aware label weight qik as in Equation 14:
+qik =
+⎧
+⎪⎨
+⎪⎩
+1,
+yik = 1,
+λu,
+yik = −1,
+0,
+yik = 0.
+(14)
+Setting λu = 0 treats uncertain ﬁndings 
+
+=== FOUND EXPERIMENTS at 2871 ===
+experiments on ﬁve medical imaging datasets across three
+downstream tasks demonstrate the effectiveness of MPDRL. For zero-shot
+classiﬁcation, MPDRL achieves an AUC of 87.7% on RSNA, outperforming
+the strongest baseline by 0.2 percentage points, and an AUC of 84.1% on
+CheXpert, which is 0.1 percentage points lower than the best-performing
+baseline, IMITATE. On CheXpert14, MPDRL achieves the best F1-score and
+accuracy, reaching 26.9% and 86.5%, respectively, although its AUC of 71.8%
+remains lower than those of several competing methods. For zero-shot image-
+text retrieval on CheXpert 8×200, MPDRL achieves Precision@1 scores of
+39.9% for image-to-text retrieval and 64.7% for text-to-image retrieval. For
+report generation, MPDRL achieves BLEU-1 scores of 0.508 on IU X-Ray
+and 0.403 on MIMIC-CXR. Importantly, clinical evaluation using CheXbert
+and RadGraph further shows improved medical factual consistency. On IU
+X-Ray, MPDRL achieves CheXbert precision, recall, and F1 scores of 0.462,
+0.414, and 0.437, respectively, while obtaining an RG-F1 score of 0.256.
+On MIMIC-CXR, it achieves CheXbert precision, recall, and F1 scores of
+0.405, 0.354, and 0.378, respectively, together with an RG-F1 score of 0.238.
+Frontiers in Artiﬁcial Intelligence
+01
+frontiersin.org
+
+--- PAGE 2 ---
+Liu et al.
+10.3389/frai.2026.1906686
+Discussion:
+Overall, these results indicate that medical prior-driven difficulty
+modeling can improve the robustness of MedVLP representations across diverse
+downstream tas
+
+=== FOUND EXPERIMENTS at 7812 ===
+experiments on ﬁve medical imaging datasets
+spanning three downstream tasks—classiﬁcation, retrieval, and
+report generation—demonstrate that MPDRL achieves competitive
+performance across a range of downstream benchmarks. The
+proposed approach achieves strong performance on zero-shot
+generalization, cross-modal retrieval, and report generation.
+Furthermore, extensive experiments further verify that each
+component contributes consistently, conﬁrming that medical
+prior-driven diﬃculty modeling, diﬃculty-aware representation
+modulation, and prior-softened contrastive learning lead to more
+robust, transferable vision-language representations.
+2 Related work
+2.1 Knowledge- and label-enhanced
+medical alignment
+Recent
+studies
+have
+sought
+to
+enhance
+MedVLP
+by
+incorporating medical knowledge, disease labels, and report
+structure. MedCLIP (Wang Z. et al., 2022) reduces the impact of
+false negatives by decoupling image–text pairs and introducing
+knowledge-driven semantic matching. BioViL (Boecking et al.,
+2022) and BioViL-T (Guo et al., 2023) enhance domain-speciﬁc
+text modeling through CXR-BERT and longitudinal report
+information,
+while
+MGCA
+(Wang F. et al.,
+2022)
+performs
+multi-granularity alignment at the instance, token, and disease
+levels. MedKLIP (Wu et al., 2023) and KAD (Zhang X. et al.,
+2023) further introduce medical entities and structured domain
+knowledge to support zero-shot and few-shot diagnosis. Such
+representations are also beneﬁcial for radiology report generation
+metho
+
+=== FOUND EXPERIMENTS at 27166 ===
+Experiments
+5.1 Datasets
+5.1.1 Pre-training dataset
+5.1.1.1 MIMIC-CXR
+This publicly accessible corpus pairs chest radiographs with
+free-text clinical reports spanning 65,379 patients, encompassing
+377,110 images from 227,835 radiological studies (Johnson et al.,
+2019). Reports typically comprise structured ﬁelds, including
+indication, technique, Findings, and Impression—while images
+cover both frontal (PA/AP) and lateral projections. We adopt the
+standard partition for model training (as shown in Table 1). To
+maintain modality consistency during the pre-training phase, only
+frontal-view radiographs are retained, together with the Findings
+and Impression sections of the associated reports, as these two
+sections most directly encode image-level diagnostic content.
+5.1.2 Downstream datasets
+For downstream evaluation, we adopt several standard
+benchmarks covering image classiﬁcation, zero-shot recognition,
+image–text retrieval, and radiology report generation. Table 1
+summarizes the scale and oﬃcial partitions of the downstream
+datasets used.
+Frontiers in Artiﬁcial Intelligence
+06
+frontiersin.org
+
+--- PAGE 7 ---
+Liu et al.
+10.3389/frai.2026.1906686
+TABLE 1 Statistics and data splits of the datasets used for pre-training and downstream evaluation.
+Dataset
+Scale
+Train
+Val
+Test
+MIMIC-CXR
+377,110 images
+368,960
+2,991
+5,159
+RSNA Pneumonia
+29,700 images
+25,184
+1,500
+3,000
+IU-Xray
+7,470 images/3,955 reports
+3,164 reports
+395 reports
+396 reports
+ChestX-ray14
+112,120 images
+78,468
+11,219
+
+
+=== FOUND EXPERIMENTS at 52762 ===
+experiments.
+FIGURE 3
+Qualitative CAM visualizations for radiology report generation. Each case shows the original chest X-ray image, the corresponding class activation
+map, and the ground-truth diagnostic report.
+that the model attends to clinically meaningful regions rather than
+irrelevant background areas.
+Overall, the report generation results demonstrate that by
+incorporating medical prior-driven diﬃculty modeling into pre-
+training, MPDRL better aligns visual ﬁndings with textual
+diagnostic descriptions, leading to more accurate and coherent
+radiology reports.
+5.3.3 Image–text retrieval
+We evaluate the zero-shot image–text retrieval performance of
+MPDRL on the CheXpert 8×200 benchmark. Both image-to-text
+and text-to-image retrieval are considered, and Precision at Top-
+1, Top-5, and Top-10 is reported. As shown in Table 7, we compare
+MPDRL with representative vision–language pre-training methods,
+Frontiers in Artiﬁcial Intelligence
+12
+frontiersin.org
+
+--- PAGE 13 ---
+Liu et al.
+10.3389/frai.2026.1906686
+TABLE 7 Zero-shot retrieval comparison on the CheXpert 8 × 200 benchmark.
+Retrieval task
+Metric
+Method
+CLIP
+MedCLIP
+GLoRIA
+ConVIRT
+MPDRL
+Image-to-text
+P@1↑
+12.8
+14.5
+38.8
+–
+39.9
+P@5↑
+12.4
+15.9
+31.6
+–
+36.2
+P@10↑
+10.0
+15.9
+24.5
+–
+27.1
+Text-to-image
+P@1↑
+5.0
+12.5
+52.5
+60.2
+64.7
+P@5↑
+12.5
+12.5
+39.0
+60.0
+62.9
+P@10↑
+12.4
+15.0
+39.0
+57.5
+59.3
+Precision at Top-1, Top-5, and Top-10 is reported for both image-to-text and text-to-image retrieval. ConVIRT image-to-text retrieval resu
+
+=== FOUND EXPERIMENTS at 75615 ===
+experiments show that MPDRL performs well across
+multiple downstream tasks. First, in supervised linear probing,
+it consistently outperforms existing medical vision–language pre-
+training methods under diﬀerent label ratios, demonstrating
+strong transferability and label eﬃciency. Second, in zero-
+shot classiﬁcation and image–text retrieval, MPDRL achieves
+competitive results, showing improved cross-modal alignment
+and generalization. Third, in radiology report generation, it also
+obtains competitive performance on IU X-Ray and MIMIC-
+CXR. Meanwhile, ablation studies also further conﬁrm that each
+component contributes consistently and complements the others.
+However, MPDRL still has several limitations. First, its medical
+prior construction relies on disease concept extraction, uncertainty
+estimation, and report semantic analysis, whose quality may aﬀect
+diﬃculty modeling. In addition, manually deﬁned severity weights
+may introduce subjectivity. Second, some priors, such as image–
+report alignment diﬃculty and sample representativeness, require
+extra pre-computation, increasing training complexity for large-
+scale datasets. Finally, MPDRL has been mainly validated on chest
+X-rays, and its generalization to other medical imaging modalities
+remains to be explored.
+Future work will focus on learning more robust and automatic
+medical-prior representations, reducing dependence on predeﬁned
+disease concepts, and extending MPDRL to broader multimodal
+clinical scenarios.
+Data availab
+

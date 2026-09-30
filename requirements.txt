@@ -1,0 +1,20 @@
+# IU X-Ray radiology report generation project
+# Python 3.11 (see plan.md: Python 3.10+, PyTorch 2.x, Hugging Face stack)
+
+# Core ML
+torch>=2.1
+torchvision>=0.16
+transformers>=4.40
+tokenizers>=0.19
+
+# Features + retrieval
+faiss-cpu>=1.7.4
+numpy<2
+pillow>=10.0
+scikit-learn>=1.3
+
+# Data handling
+pandas>=2.0
+
+# NLG evaluation (METEOR requires a working `java` on PATH)
+pycocoevalcap>=1.2

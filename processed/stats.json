@@ -1,0 +1,41 @@
+{
+ "n_records": 2943,
+ "split_sizes": {
+  "train": 2060,
+  "val": 294,
+  "test": 589
+ },
+ "dropped": {
+  "empty_text": 445,
+  "no_lateral": 301,
+  "no_frontal": 162
+ },
+ "mean_words": 29.88,
+ "frac_exact_duplicate_train_reports": 0.266,
+ "most_common_train_report": [
+  "the heart and lungs have in the interval. both lungs are clear and expanded. heart and mediastinum normal.",
+  31
+ ],
+ "label_prevalence_weak": {
+  "Enlarged Cardiomediastinum": 7,
+  "Cardiomegaly": 239,
+  "Lung Opacity": 346,
+  "Lung Lesion": 380,
+  "Edema": 30,
+  "Consolidation": 21,
+  "Pneumonia": 31,
+  "Atelectasis": 231,
+  "Pneumothorax": 14,
+  "Pleural Effusion": 97,
+  "Pleural Other": 32,
+  "Fracture": 70,
+  "Support Devices": 317,
+  "No Finding": 1085
+ },
+ "protocol": {
+  "include_single_view": false,
+  "impression_fallback": false,
+  "r2gen_annotation": null,
+  "seed": 42
+ }
+}
