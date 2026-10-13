@@ -209,18 +209,19 @@ def main():
     vram_gb = step_0_check_system()
     if args.batch_size is None:
         if vram_gb > 0 and vram_gb <= 6.5:
-            # 6GB GPU (RTX 4050 laptop): batch_size=1, grad_accum=16 for rock-solid stability
+            # 6GB GPU (RTX 4050 laptop)
             args.batch_size = 1
             args.grad_accum = 16
             print(f"Auto-configured for {vram_gb:.1f}GB GPU (RTX 4050): batch_size=1, grad_accum=16 (effective batch 16)")
-        elif vram_gb > 6.5 and vram_gb <= 8.5:
+        elif vram_gb > 6.5 and vram_gb <= 16.0:
+            # 8GB - 16GB GPU (T4 15GB): batch_size=2, grad_accum=8 prevents Stage 2 LoRA peak VRAM OOM
             args.batch_size = 2
             args.grad_accum = 8
-            print(f"Auto-configured for {vram_gb:.1f}GB GPU: batch_size=2, grad_accum=8 (effective batch 16)")
+            print(f"Auto-configured for {vram_gb:.1f}GB GPU (T4 safe): batch_size=2, grad_accum=8 (effective batch 16)")
         else:
             args.batch_size = 4
             args.grad_accum = 4
-            print("Configured for standard GPU: batch_size=4, grad_accum=4 (effective batch 16)")
+            print(f"Configured for large GPU ({vram_gb:.1f}GB): batch_size=4, grad_accum=4 (effective batch 16)")
     elif args.grad_accum is None:
         args.grad_accum = max(16 // args.batch_size, 1)
 

@@ -12,9 +12,11 @@ Protocol (Plan 2.1):
 """
 
 import argparse
+import os
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
 import json
 import math
-import os
 import random
 import sys
 import time
