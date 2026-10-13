@@ -114,12 +114,20 @@ def save_checkpoint(
     print(f"  [Checkpoint Saved] -> {save_dir} (Stage {stage}, Epoch {epoch}, Step {step})")
 
 
+def safe_torch_load(path: str, map_location="cpu"):
+    """Load checkpoint safely in PyTorch 2.6+ (where weights_only defaults to True)."""
+    try:
+        return torch.load(path, map_location=map_location, weights_only=False)
+    except TypeError:
+        return torch.load(path, map_location=map_location)
+
+
 def load_weights(model: DualViewRAGVLM, ckpt_dir: str):
     """Restore projector, classifier head, and LoRA adapter weights."""
     custom_weights_path = os.path.join(ckpt_dir, "custom_heads.pt")
     if os.path.exists(custom_weights_path):
         print(f"Loading custom heads from {custom_weights_path}...")
-        custom_weights = torch.load(custom_weights_path, map_location="cpu")
+        custom_weights = safe_torch_load(custom_weights_path, map_location="cpu")
         model.projector.load_state_dict(custom_weights["projector"])
         model.classifier_head.load_state_dict(custom_weights["classifier_head"])
         model.view_embed_frontal.data.copy_(custom_weights["view_embed_frontal"])
@@ -498,7 +506,7 @@ def main():
     if args.resume_from and os.path.exists(args.resume_from):
         state_file = os.path.join(args.resume_from, "training_state.pt")
         if os.path.exists(state_file):
-            resume_state = torch.load(state_file, map_location="cpu")
+            resume_state = safe_torch_load(state_file, map_location="cpu")
             saved_stage = resume_state.get("stage", 1)
             saved_epoch = resume_state.get("epoch", 1)
             saved_step = resume_state.get("step", 0)

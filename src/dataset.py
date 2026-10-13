@@ -137,7 +137,10 @@ class IUReportDataset(Dataset):
         if not os.path.exists(feat_path):
             raise FileNotFoundError(f"Cached feature missing for UID {uid}: {feat_path}")
 
-        cached = torch.load(feat_path, map_location="cpu")
+        try:
+            cached = torch.load(feat_path, map_location="cpu", weights_only=False)
+        except TypeError:
+            cached = torch.load(feat_path, map_location="cpu")
         frontal_feat = cached["frontal"].float()  # [144, 768]
         if self.use_lateral:
             lateral_feat = cached["lateral"].float()  # [144, 768]
