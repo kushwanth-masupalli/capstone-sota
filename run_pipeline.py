@@ -116,6 +116,7 @@ def step_3_train(args):
         "--epochs_s2", str(args.epochs_s2),
         "--seed", str(args.seed),
         "--out_dir", args.out_dir,
+        "--save_steps", "50",
     ]
     print(f"Executing: {' '.join(cmd)}")
     subprocess.run(cmd, check=True)
@@ -207,8 +208,12 @@ def main():
     # Step 0: System check & automatic batch size configuration
     vram_gb = step_0_check_system()
     if args.batch_size is None:
-        if vram_gb > 0 and vram_gb <= 8.0:
-            # 6GB or 8GB GPU (e.g. RTX 4050 laptop): use batch_size 2 to avoid OOM
+        if vram_gb > 0 and vram_gb <= 6.5:
+            # 6GB GPU (RTX 4050 laptop): batch_size=1, grad_accum=16 for rock-solid stability
+            args.batch_size = 1
+            args.grad_accum = 16
+            print(f"Auto-configured for {vram_gb:.1f}GB GPU (RTX 4050): batch_size=1, grad_accum=16 (effective batch 16)")
+        elif vram_gb > 6.5 and vram_gb <= 8.5:
             args.batch_size = 2
             args.grad_accum = 8
             print(f"Auto-configured for {vram_gb:.1f}GB GPU: batch_size=2, grad_accum=8 (effective batch 16)")

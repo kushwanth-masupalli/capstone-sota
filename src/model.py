@@ -78,7 +78,16 @@ class DualViewRAGVLM(nn.Module):
 
         # 3. Load LLM and Tokenizer
         print(f"Loading base LLM: {llm_name_or_path}...")
-        self.tokenizer = AutoTokenizer.from_pretrained(llm_name_or_path, trust_remote_code=True)
+        local_only = os.environ.get("TRANSFORMERS_OFFLINE") == "1" or os.environ.get("HF_HUB_OFFLINE") == "1"
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                llm_name_or_path,
+                trust_remote_code=True,
+                local_files_only=local_only,
+            )
+        except Exception:
+            self.tokenizer = AutoTokenizer.from_pretrained(llm_name_or_path, trust_remote_code=True)
+
         if IMAGE_PAD_TOKEN not in self.tokenizer.get_vocab():
             self.tokenizer.add_special_tokens({"additional_special_tokens": [IMAGE_PAD_TOKEN]})
         self.image_pad_token_id = self.tokenizer.convert_tokens_to_ids(IMAGE_PAD_TOKEN)
@@ -92,13 +101,27 @@ class DualViewRAGVLM(nn.Module):
                 bnb_4bit_use_double_quant=True,
             )
 
-        self.llm = AutoModelForCausalLM.from_pretrained(
-            llm_name_or_path,
-            quantization_config=bnb_config,
-            torch_dtype=torch_dtype,
-            device_map=device_map,
-            trust_remote_code=True,
-        )
+        try:
+            self.llm = AutoModelForCausalLM.from_pretrained(
+                llm_name_or_path,
+                quantization_config=bnb_config,
+                torch_dtype=torch_dtype,
+                device_map=device_map,
+                trust_remote_code=True,
+                local_files_only=local_only,
+            )
+        except Exception as e:
+            if local_only:
+                print(f"Offline load failed, attempting online download: {e}")
+                self.llm = AutoModelForCausalLM.from_pretrained(
+                    llm_name_or_path,
+                    quantization_config=bnb_config,
+                    torch_dtype=torch_dtype,
+                    device_map=device_map,
+                    trust_remote_code=True,
+                )
+            else:
+                raise e
 
         d_llm = self.llm.config.hidden_size
         print(f"LLM hidden dimension: {d_llm}")
@@ -106,9 +129,12 @@ class DualViewRAGVLM(nn.Module):
         # 4. 2-layer MLP Projector
         self.projector = MLPProjector(d_enc, d_llm)
 
-        # 5. Apply QLoRA to LLM
+        # 5. Apply QLoRA to LLM with gradient checkpointing for VRAM efficiency (6GB safe)
         if load_in_4bit:
-            self.llm = prepare_model_for_kbit_training(self.llm)
+            self.llm = prepare_model_for_kbit_training(self.llm, use_gradient_checkpointing=True)
+            self.llm.gradient_checkpointing_enable()
+            if hasattr(self.llm, "enable_input_require_grads"):
+                self.llm.enable_input_require_grads()
 
         lora_config = LoraConfig(
             r=lora_r,
