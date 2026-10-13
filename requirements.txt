@@ -16,5 +16,14 @@ scikit-learn>=1.3
 # Data handling
 pandas>=2.0
 
-# NLG evaluation (METEOR requires a working `java` on PATH)
+# NLG evaluation & NLP metrics
 pycocoevalcap>=1.2
+rouge-score>=0.1.2
+nltk>=3.8
+
+# QLoRA & Training
+peft>=0.10.0
+bitsandbytes>=0.43.0
+accelerate>=0.29.0
+tabulate>=0.9.0
+tqdm>=4.66
