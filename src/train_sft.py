@@ -252,6 +252,7 @@ def main():
     parser.add_argument("--grad_accum", type=int, default=4)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--resume_from", default=None, help="Directory of checkpoint to resume from (e.g. outputs/checkpoints/stage2_best)")
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -259,11 +260,38 @@ def main():
     print(f"Base LLM: {args.llm_name}")
     print(f"Device:   {args.device}")
 
+    # Auto-resume logic if skipping to stage 2
+    if args.stage == 2 and args.resume_from is None:
+        if os.path.exists(os.path.join(args.out_dir, "stage2_best")):
+            args.resume_from = os.path.join(args.out_dir, "stage2_best")
+            print(f"Auto-resuming Stage 2 from best checkpoint: {args.resume_from}")
+        elif os.path.exists(os.path.join(args.out_dir, "stage1_final")):
+            args.resume_from = os.path.join(args.out_dir, "stage1_final")
+            print(f"Auto-loading Stage 1 trained projector from: {args.resume_from}")
+
     # 1. Initialize model
     model = DualViewRAGVLM(
         llm_name_or_path=args.llm_name,
         load_in_4bit=True,
     )
+
+    # Load checkpoint if resuming
+    if args.resume_from and os.path.exists(args.resume_from):
+        custom_weights_path = os.path.join(args.resume_from, "custom_heads.pt")
+        if os.path.exists(custom_weights_path):
+            print(f"Loading custom heads from {custom_weights_path}...")
+            custom_weights = torch.load(custom_weights_path, map_location="cpu")
+            model.projector.load_state_dict(custom_weights["projector"])
+            model.classifier_head.load_state_dict(custom_weights["classifier_head"])
+            model.view_embed_frontal.data.copy_(custom_weights["view_embed_frontal"])
+            model.view_embed_lateral.data.copy_(custom_weights["view_embed_lateral"])
+
+        lora_dir = os.path.join(args.resume_from, "lora")
+        if os.path.exists(lora_dir):
+            print(f"Loading LoRA weights from {lora_dir}...")
+            from peft import PeftModel
+            model.llm = PeftModel.from_pretrained(model.llm.base_model.model, lora_dir)
+            model.llm.train()
 
     # 2. Build datasets and dataloaders
     train_path = os.path.join(args.data_dir, "train.json")
