@@ -115,8 +115,17 @@ def coco_scores(refs: dict, hyps: dict):
     for k in range(4):
         out[f"BLEU-{k + 1}"] = b[k]
         per[f"BLEU-{k + 1}"] = bs[k]
-    m, ms = Meteor().compute_score(gts, res)
-    out["METEOR"], per["METEOR"] = m, ms
+    try:
+        m, ms = Meteor().compute_score(gts, res)
+        out["METEOR"], per["METEOR"] = m, ms
+    except Exception as e:
+        import nltk
+        nltk.download("wordnet", quiet=True)
+        nltk.download("omw-1.4", quiet=True)
+        from nltk.translate.meteor_score import meteor_score
+        ms = [meteor_score([gts[i][0].split()], res[i][0].split()) for i in ids]
+        m = float(sum(ms) / max(len(ms), 1))
+        out["METEOR"], per["METEOR"] = m, ms
     r, rs = Rouge().compute_score(gts, res)
     out["ROUGE-L"], per["ROUGE-L"] = r, rs
     c, cs = Cider().compute_score(gts, res)
