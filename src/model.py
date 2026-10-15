@@ -57,7 +57,7 @@ class DualViewRAGVLM(nn.Module):
         cls_loss_weight: float = 0.2,
         lora_r: int = 32,
         lora_alpha: int = 64,
-        lora_dropout: float = 0.05,
+        lora_dropout: float = 0.1,
         load_in_4bit: bool = True,
         device_map: Optional[str] = "auto",
         torch_dtype: Optional[torch.dtype] = None,

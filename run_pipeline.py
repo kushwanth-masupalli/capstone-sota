@@ -114,6 +114,8 @@ def step_3_train(args):
         "--grad_accum", str(args.grad_accum),
         "--epochs_s1", str(args.epochs_s1),
         "--epochs_s2", str(args.epochs_s2),
+        "--lr_lora", str(args.lr_lora),
+        "--lora_dropout", str(args.lora_dropout),
         "--seed", str(args.seed),
         "--out_dir", args.out_dir,
         "--save_steps", "50",
@@ -180,10 +182,25 @@ def step_5_benchmark_comparison(pred_json_path: str):
     wins = []
     if scores["ROUGE-L"] > 0.411:
         wins.append(f"WIN: ROUGE-L ({scores['ROUGE-L']:.4f}) beats DART (0.411)")
+    elif scores["ROUGE-L"] > 0.402:
+        wins.append(f"WIN: ROUGE-L ({scores['ROUGE-L']:.4f}) beats LePaX (0.402)")
+    elif scores["ROUGE-L"] > 0.383:
+        wins.append(f"WIN: ROUGE-L ({scores['ROUGE-L']:.4f}) beats MPDRL (0.383)")
+
     if scores["METEOR"] > 0.316:
         wins.append(f"WIN: METEOR ({scores['METEOR']:.4f}) beats LePaX (0.316)")
+    elif scores["METEOR"] > 0.205:
+        wins.append(f"WIN: METEOR ({scores['METEOR']:.4f}) beats DART (0.205)")
+
     if scores["BLEU-4"] > 0.235:
         wins.append(f"WIN: BLEU-4 ({scores['BLEU-4']:.4f}) beats LePaX (0.235)")
+    elif scores["BLEU-4"] > 0.185:
+        wins.append(f"WIN: BLEU-4 ({scores['BLEU-4']:.4f}) beats KiUT / MPDRL (0.185)")
+
+    if scores.get("BLEU-1", 0) > 0.3449:
+        wins.append(f"BEATS HURDLE: BLEU-1 ({scores['BLEU-1']:.4f}) beats E1 Pure Retrieval Hurdle (0.3449)")
+    if scores.get("ROUGE-L", 0) > 0.2809:
+        wins.append(f"BEATS FLOOR: ROUGE-L ({scores['ROUGE-L']:.4f}) beats E0 Normal Report Floor (0.2809)")
 
     for w in wins:
         print(f"  * {w}")
@@ -195,7 +212,9 @@ def main():
     parser = argparse.ArgumentParser(description="End-to-End IU X-Ray Pipeline Runner")
     parser.add_argument("--stage", type=int, choices=[0, 1, 2], default=0, help="0=Both, 1=Warmup only, 2=SFT only")
     parser.add_argument("--epochs_s1", type=int, default=1, help="Stage 1 warmup epochs (default: 1)")
-    parser.add_argument("--epochs_s2", type=int, default=3, help="Stage 2 SFT epochs (default: 3)")
+    parser.add_argument("--epochs_s2", type=int, default=5, help="Stage 2 SFT epochs (default: 5)")
+    parser.add_argument("--lr_lora", type=float, default=5e-5, help="LoRA learning rate (default: 5e-5)")
+    parser.add_argument("--lora_dropout", type=float, default=0.1, help="LoRA dropout rate (default: 0.1)")
     parser.add_argument("--batch_size", type=int, default=None, help="Batch size (auto-configured based on VRAM if None)")
     parser.add_argument("--grad_accum", type=int, default=None, help="Gradient accumulation steps")
     parser.add_argument("--llm_name", default="Qwen/Qwen2.5-3B-Instruct", help="Hugging Face base LLM model ID")

@@ -188,6 +188,7 @@ def train_stage(
     save_steps: int = 50,
     val_samples: int = 20,
     patience: int = 3,
+    lr_lora: float = 5e-5,
     resume_state: Optional[Dict] = None,
 ) -> Dict:
     """Train one stage (Stage 1 warmup or Stage 2 SFT) with fault-tolerant checkpointing."""
@@ -204,7 +205,7 @@ def train_stage(
     else:
         lora_params = [p for n, p in model.llm.named_parameters() if p.requires_grad]
         params = [
-            {"params": lora_params, "lr": 1e-4},
+            {"params": lora_params, "lr": lr_lora},
             {"params": model.projector.parameters(), "lr": 2e-5},
             {"params": model.classifier_head.parameters(), "lr": 1e-4},
             {"params": [model.view_embed_frontal, model.view_embed_lateral], "lr": 2e-5},
@@ -440,7 +441,9 @@ def main():
     parser.add_argument("--out_dir", default="outputs/checkpoints")
     parser.add_argument("--stage", type=int, choices=[1, 2, 0], default=0, help="1=Warmup, 2=SFT, 0=Both")
     parser.add_argument("--epochs_s1", type=int, default=1, help="Stage 1 warmup epochs (default: 1)")
-    parser.add_argument("--epochs_s2", type=int, default=3, help="Stage 2 SFT epochs (default: 3)")
+    parser.add_argument("--epochs_s2", type=int, default=5, help="Stage 2 SFT epochs (default: 5)")
+    parser.add_argument("--lr_lora", type=float, default=5e-5, help="LoRA learning rate for Stage 2 (default: 5e-5)")
+    parser.add_argument("--lora_dropout", type=float, default=0.1, help="LoRA dropout rate (default: 0.1)")
     parser.add_argument("--batch_size", type=int, default=None, help="Batch size (auto-configured if None)")
     parser.add_argument("--grad_accum", type=int, default=None, help="Gradient accumulation steps")
     parser.add_argument("--save_steps", type=int, default=50, help="Save checkpoint every N steps (default: 50)")
@@ -526,6 +529,7 @@ def main():
     # 4. Initialize model
     model = DualViewRAGVLM(
         llm_name_or_path=args.llm_name,
+        lora_dropout=args.lora_dropout,
         load_in_4bit=True,
     )
 
@@ -605,6 +609,7 @@ def main():
             epochs=args.epochs_s2,
             device=args.device,
             grad_accum_steps=args.grad_accum,
+            lr_lora=args.lr_lora,
             save_dir=args.out_dir,
             save_steps=args.save_steps,
             val_samples=args.val_samples,
