@@ -144,7 +144,8 @@ def step_4_evaluate(args):
     if getattr(args, "max_samples", None) is not None:
         cmd.extend(["--max_samples", str(args.max_samples)])
     print(f"Executing: {' '.join(cmd)}")
-    subprocess.run(cmd, check=True)
+    env = {**os.environ, "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"}
+    subprocess.run(cmd, env=env, check=True)
 
     return out_json
 

@@ -328,6 +328,7 @@ class DualViewRAGVLM(nn.Module):
             do_sample=do_sample,
             temperature=temperature if do_sample else None,
             top_p=top_p if do_sample else None,
+            top_k=50 if do_sample else None,
             repetition_penalty=repetition_penalty,
             no_repeat_ngram_size=no_repeat_ngram_size,
             num_return_sequences=num_return_sequences,
