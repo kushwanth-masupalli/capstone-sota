@@ -2,7 +2,7 @@
 data/images/
 processed/feats/
 outputs/checkpoints/
-feats.zip
+*.zip
 .idea/
 
 # Python cache & compiled binaries

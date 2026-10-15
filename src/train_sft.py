@@ -453,6 +453,7 @@ def main():
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--resume_from", default=None, help="Directory to resume from")
     parser.add_argument("--no_auto_resume", action="store_true", help="Disable automatic checkpoint resuming")
+    parser.add_argument("--fresh_s2", action="store_true", help="Start fresh Stage 2 training from Stage 1 projector")
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -504,17 +505,48 @@ def main():
     # 3. Check for existing checkpoints to auto-resume
     os.makedirs(args.out_dir, exist_ok=True)
     latest_ckpt = os.path.join(args.out_dir, "latest_checkpoint")
-    if not args.no_auto_resume and args.resume_from is None:
+    if getattr(args, "fresh_s2", False) and args.stage == 2:
+        stage1_ckpt = os.path.join(args.out_dir, "stage1_final")
+        if not os.path.exists(stage1_ckpt):
+            stage1_ckpt = os.path.join(args.out_dir, "stage1_best")
+        if os.path.exists(stage1_ckpt):
+            args.resume_from = stage1_ckpt
+            print(f"\n[FRESH STAGE 2] Starting fresh Stage 2 with new hyperparameters, loading Stage 1 projector from '{stage1_ckpt}'")
+    elif not args.no_auto_resume and args.resume_from is None:
         if os.path.exists(latest_ckpt) and os.path.exists(os.path.join(latest_ckpt, "custom_heads.pt")):
-            args.resume_from = latest_ckpt
-            print(f"\n[AUTO-RESUME] Found existing progress at '{latest_ckpt}'! Resuming automatically...")
+            # Check if latest_checkpoint is an old Stage 2 run that already completed epochs_s2
+            meta_path = os.path.join(latest_ckpt, "checkpoint_meta.json")
+            is_completed = False
+            if os.path.exists(meta_path):
+                try:
+                    with open(meta_path) as f:
+                        meta = json.load(f)
+                    if meta.get("stage") == 2 and meta.get("epoch", 0) >= args.epochs_s2:
+                        is_completed = True
+                except Exception:
+                    pass
+            if is_completed and args.stage == 2:
+                # Do not resume an already finished run; start fresh from Stage 1 projector
+                stage1_ckpt = os.path.join(args.out_dir, "stage1_final")
+                if not os.path.exists(stage1_ckpt):
+                    stage1_ckpt = os.path.join(args.out_dir, "stage1_best")
+                args.resume_from = stage1_ckpt
+                print(f"\n[FRESH STAGE 2] Previous Stage 2 checkpoint already completed {args.epochs_s2} epochs.")
+                print(f"  Starting fresh Stage 2 with new hyperparameters (lr={args.lr_lora}, dropout={args.lora_dropout})")
+                print(f"  Loaded trained Stage 1 projector from: '{stage1_ckpt}'")
+            else:
+                args.resume_from = latest_ckpt
+                print(f"\n[AUTO-RESUME] Found existing progress at '{latest_ckpt}'! Resuming automatically...")
         elif args.stage == 2:
-            if os.path.exists(os.path.join(args.out_dir, "stage2_best")):
-                args.resume_from = os.path.join(args.out_dir, "stage2_best")
-                print(f"[AUTO-RESUME] Resuming Stage 2 from best checkpoint: {args.resume_from}")
-            elif os.path.exists(os.path.join(args.out_dir, "stage1_final")):
+            if os.path.exists(os.path.join(args.out_dir, "stage1_final")):
                 args.resume_from = os.path.join(args.out_dir, "stage1_final")
                 print(f"[AUTO-RESUME] Loading Stage 1 trained projector from: {args.resume_from}")
+            elif os.path.exists(os.path.join(args.out_dir, "stage1_best")):
+                args.resume_from = os.path.join(args.out_dir, "stage1_best")
+                print(f"[AUTO-RESUME] Loading Stage 1 trained projector from: {args.resume_from}")
+            elif os.path.exists(os.path.join(args.out_dir, "stage2_best")):
+                args.resume_from = os.path.join(args.out_dir, "stage2_best")
+                print(f"[AUTO-RESUME] Resuming Stage 2 from best checkpoint: {args.resume_from}")
 
     resume_state = None
     if args.resume_from and os.path.exists(args.resume_from):

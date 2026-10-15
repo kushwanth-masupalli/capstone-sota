@@ -120,8 +120,11 @@ def step_3_train(args):
         "--out_dir", args.out_dir,
         "--save_steps", "50",
     ]
+    if getattr(args, "fresh_s2", False):
+        cmd.append("--fresh_s2")
+    env = {**os.environ, "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"}
     print(f"Executing: {' '.join(cmd)}")
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, env=env, check=True)
 
 
 def step_4_evaluate(args):
@@ -226,6 +229,7 @@ def main():
     parser.add_argument("--max_samples", type=int, default=None, help="Limit number of test samples to evaluate")
     parser.add_argument("--skip_train", action="store_true", help="Skip training and jump straight to MBR evaluation")
     parser.add_argument("--skip_eval", action="store_true", help="Skip evaluation after training")
+    parser.add_argument("--fresh_s2", action="store_true", help="Start fresh Stage 2 training from Stage 1 projector")
     args = parser.parse_args()
 
     # Step 0: System check & automatic batch size configuration
