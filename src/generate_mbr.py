@@ -90,12 +90,14 @@ def run_inference(
     mode: str = "mbr",
     n_candidates: int = 16,
     max_new_tokens: int = 128,
+    max_samples: Optional[int] = None,
     out_json_path: str = "outputs/predictions.json",
 ) -> Dict:
     """
     Run generation on dataset and evaluate headline metrics.
     """
-    print(f"\nRunning inference in mode: '{mode}' on {len(dataset)} studies...")
+    total_eval = min(len(dataset), max_samples) if max_samples else len(dataset)
+    print(f"\nRunning inference in mode: '{mode}' on {total_eval} / {len(dataset)} studies...")
     model.eval()
 
     predictions = []
@@ -104,7 +106,7 @@ def run_inference(
 
     start_time = time.time()
 
-    for i in tqdm(range(len(dataset)), desc=f"Generating ({mode})"):
+    for i in tqdm(range(total_eval), desc=f"Generating ({mode})"):
         item = dataset[i]
         uid = item["uid"]
         ground_truth = truncate(item["target_findings"], 60)
@@ -202,6 +204,7 @@ def main():
     parser.add_argument("--mode", choices=["mbr", "beam", "sample"], default="mbr")
     parser.add_argument("--n_candidates", type=int, default=16, help="Pool size for MBR")
     parser.add_argument("--max_new_tokens", type=int, default=128)
+    parser.add_argument("--max_samples", type=int, default=None, help="Limit number of samples for quick testing")
     parser.add_argument("--data_dir", default="processed")
     parser.add_argument("--feats_dir", default="processed/feats")
     parser.add_argument("--out_json", default=None)
@@ -222,22 +225,9 @@ def main():
         load_in_4bit=True,
     )
 
-    # Load custom weights (projector, head, view embeddings)
-    custom_weights_path = os.path.join(args.checkpoint_dir, "custom_heads.pt")
-    if os.path.exists(custom_weights_path):
-        print(f"Loading custom heads from {custom_weights_path}...")
-        custom_weights = torch.load(custom_weights_path, map_location="cpu")
-        model.projector.load_state_dict(custom_weights["projector"])
-        model.classifier_head.load_state_dict(custom_weights["classifier_head"])
-        model.view_embed_frontal.data.copy_(custom_weights["view_embed_frontal"])
-        model.view_embed_lateral.data.copy_(custom_weights["view_embed_lateral"])
-
-    # Load LoRA weights
-    lora_dir = os.path.join(args.checkpoint_dir, "lora")
-    if os.path.exists(lora_dir):
-        print(f"Loading LoRA weights from {lora_dir}...")
-        from peft import PeftModel
-        model.llm = PeftModel.from_pretrained(model.llm.base_model.model, lora_dir)
+    # Load custom weights (projector, head, view embeddings) and LoRA
+    from train_sft import load_weights
+    load_weights(model, args.checkpoint_dir)
 
     # 2. Build Dataset
     split_path = os.path.join(args.data_dir, f"{args.split}.json")
@@ -264,6 +254,7 @@ def main():
         mode=args.mode,
         n_candidates=args.n_candidates,
         max_new_tokens=args.max_new_tokens,
+        max_samples=args.max_samples,
         out_json_path=args.out_json,
     )
 

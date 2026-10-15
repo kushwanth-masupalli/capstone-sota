@@ -60,9 +60,11 @@ class DualViewRAGVLM(nn.Module):
         lora_dropout: float = 0.05,
         load_in_4bit: bool = True,
         device_map: Optional[str] = "auto",
-        torch_dtype: torch.dtype = torch.float16,
+        torch_dtype: Optional[torch.dtype] = None,
     ):
         super().__init__()
+        if torch_dtype is None:
+            torch_dtype = torch.bfloat16 if (torch.cuda.is_available() and torch.cuda.is_bf16_supported()) else torch.float16
         self.d_enc = d_enc
         self.num_tokens_per_view = num_tokens_per_view
         self.cls_loss_weight = cls_loss_weight
@@ -189,7 +191,8 @@ class DualViewRAGVLM(nn.Module):
         attention_mask: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
         labels_14: Optional[torch.Tensor] = None,
-    ) -> Dict[str, torch.Tensor]:
+        return_logits: bool = False,
+    ) -> Dict[str, Optional[torch.Tensor]]:
         """
         Forward pass with multimodal fusion and auxiliary loss.
         """
@@ -234,11 +237,10 @@ class DualViewRAGVLM(nn.Module):
 
         for b in range(B):
             pad_mask = (input_ids[b] == self.image_pad_token_id)
-            pad_count = pad_mask.sum().item()
-            if pad_count > 0:
-                # Insert the visual tokens
-                num_to_insert = min(pad_count, vis_embeds.shape[1])
-                inputs_embeds[b, pad_mask][:num_to_insert] = vis_embeds[b, :num_to_insert]
+            pad_indices = torch.where(pad_mask)[0]
+            if len(pad_indices) > 0:
+                num_to_insert = min(len(pad_indices), vis_embeds.shape[1])
+                inputs_embeds[b, pad_indices[:num_to_insert]] = vis_embeds[b, :num_to_insert]
 
         # 5. LLM forward pass
         outputs = self.llm(
@@ -253,11 +255,13 @@ class DualViewRAGVLM(nn.Module):
         if loss_lm is not None:
             total_loss = loss_lm.float() + self.cls_loss_weight * loss_cls.float()
 
+        logits = outputs.logits if return_logits else None
+
         return {
             "loss": total_loss,
             "loss_lm": loss_lm,
             "loss_cls": loss_cls,
-            "logits": outputs.logits,
+            "logits": logits,
             "cls_logits": cls_logits,
         }
 

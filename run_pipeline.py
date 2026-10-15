@@ -129,7 +129,7 @@ def step_4_evaluate(args):
         best_ckpt = os.path.join(args.out_dir, "stage1_best")
         print(f"Note: Using stage1 checkpoint at '{best_ckpt}'")
 
-    out_json = "outputs/test_mbr_predictions.json"
+    out_json = f"outputs/test_{args.mode}_predictions.json"
     cmd = [
         sys.executable, "src/generate_mbr.py",
         "--checkpoint_dir", best_ckpt,
@@ -139,6 +139,8 @@ def step_4_evaluate(args):
         "--split", "test",
         "--out_json", out_json,
     ]
+    if getattr(args, "max_samples", None) is not None:
+        cmd.extend(["--max_samples", str(args.max_samples)])
     print(f"Executing: {' '.join(cmd)}")
     subprocess.run(cmd, check=True)
 
@@ -201,6 +203,7 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--mode", choices=["mbr", "beam", "sample"], default="mbr", help="Inference decoding mode")
     parser.add_argument("--n_candidates", type=int, default=16, help="Candidate pool size for MBR consensus")
+    parser.add_argument("--max_samples", type=int, default=None, help="Limit number of test samples to evaluate")
     parser.add_argument("--skip_train", action="store_true", help="Skip training and jump straight to MBR evaluation")
     parser.add_argument("--skip_eval", action="store_true", help="Skip evaluation after training")
     args = parser.parse_args()

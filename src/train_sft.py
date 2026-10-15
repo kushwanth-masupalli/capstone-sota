@@ -299,17 +299,25 @@ def train_stage(
             )
 
             # Numerical stability guard against NaNs/Infs
-            if torch.isnan(outputs["loss"]) or torch.isinf(outputs["loss"]):
+            loss_tensor = outputs["loss"]
+            if torch.isnan(loss_tensor) or torch.isinf(loss_tensor):
                 print(f"Warning: NaN/Inf detected at step {step}, skipping batch...")
                 optimizer.zero_grad()
+                del outputs
                 continue
 
-            loss = outputs["loss"] / grad_accum_steps
-            loss.backward()
+            loss_val = loss_tensor.item()
+            loss_lm_val = outputs["loss_lm"].item()
+            loss_cls_val = outputs["loss_cls"].item()
 
-            running_loss += outputs["loss"].item()
-            running_lm += outputs["loss_lm"].item()
-            running_cls += outputs["loss_cls"].item()
+            loss = loss_tensor / grad_accum_steps
+            del outputs
+            loss.backward()
+            del loss
+
+            running_loss += loss_val
+            running_lm += loss_lm_val
+            running_cls += loss_cls_val
             step_count += 1
             global_step += 1
 
@@ -323,6 +331,8 @@ def train_stage(
                 else:
                     print(f"Warning: NaN grad_norm at step {step}, skipping step")
                 optimizer.zero_grad()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
 
             pbar.set_postfix({
                 "loss": f"{running_loss/max(step_count,1):.4f}",
@@ -435,6 +445,7 @@ def main():
     parser.add_argument("--grad_accum", type=int, default=None, help="Gradient accumulation steps")
     parser.add_argument("--save_steps", type=int, default=50, help="Save checkpoint every N steps (default: 50)")
     parser.add_argument("--val_samples", type=int, default=20, help="Validation sample count per epoch (default: 20)")
+    parser.add_argument("--max_seq_len", type=int, default=640, help="Max sequence length (default: 640)")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--resume_from", default=None, help="Directory to resume from")
@@ -539,6 +550,7 @@ def main():
         faiss_meta_path=faiss_meta,
         k_retrieval=2,
         is_training=True,
+        max_seq_len=args.max_seq_len,
     )
 
     val_dataset = IUReportDataset(
@@ -550,6 +562,7 @@ def main():
         faiss_meta_path=faiss_meta,
         k_retrieval=2,
         is_training=False,
+        max_seq_len=args.max_seq_len,
     )
 
     train_loader = DataLoader(

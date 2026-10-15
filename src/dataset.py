@@ -46,7 +46,7 @@ class IUReportDataset(Dataset):
         faiss_meta_path: Optional[str] = None,
         k_retrieval: int = 2,
         is_training: bool = True,
-        max_seq_len: int = 800,
+        max_seq_len: int = 640,
         use_retrieval: bool = True,
         use_priors: bool = True,
         use_lateral: bool = True,
