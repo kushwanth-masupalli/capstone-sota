@@ -1,25 +1,21 @@
 """
-evaluate.py - headline NLG scoring for IU X-Ray with pycocoevalcap (needs Java).
+evaluate.py - headline NLG scoring for IU X-Ray with pycocoevalcap (needs Java)
+and Clinical Cross-Checking evaluation.
 
 Modes
-  --mode gt        ground truth vs ground truth (sanity: everything should be ~1.0)
-  --mode normal    constant 'normal' report baseline (minimum hurdle)
-  --mode score     score a predictions file
-  --mode retrieval retrieval-only baseline from a precomputed neighbour file (see below)
-
-Predictions file: JSON, either {"uid": "text", ...} or [{"uid": ..., "generated": ...}, ...]
-Retrieval file  : JSON {"uid": "train_uid_of_top1_neighbour", ...} (made later by the retriever)
-
-Examples
-  python src/evaluate.py --mode gt     --ref processed/test.json
-  python src/evaluate.py --mode normal --ref processed/test.json
-  python src/evaluate.py --mode score  --ref processed/test.json --pred outputs/preds.json \
-         --train processed/train.json --out outputs/scores.json
-
-Also exposes fast helpers (rouge_l_f1, mbr_select) used by the MBR decoder.
+  --mode gt         ground truth vs ground truth (sanity: everything should be ~1.0)
+  --mode normal     constant 'normal' report baseline (minimum hurdle)
+  --mode score      score a predictions file
+  --mode retrieval  retrieval-only baseline from a precomputed neighbour file
+  --mode crosscheck clinical factuality and omission/hallucination audit
 """
 import argparse
 import json
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(__file__))
+from cross_check import cross_check_report
 
 NORMAL_REPORT = ("the lungs are clear. no focal consolidation, pneumothorax, or pleural effusion. "
                  "the cardiac silhouette is normal.")
@@ -139,15 +135,68 @@ def fmt(d):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--mode", choices=["gt", "normal", "score", "retrieval"], required=True)
-    ap.add_argument("--ref", required=True, help="processed/test.json (or val.json)")
+    ap.add_argument("--mode", choices=["gt", "normal", "score", "retrieval", "crosscheck"], required=True)
+    ap.add_argument("--ref", default=None, help="processed/test.json (or val.json)")
     ap.add_argument("--pred", default=None)
+    ap.add_argument("--priors", default="processed/test_priors.json", help="Path to clinical priors JSON")
     ap.add_argument("--train", default=None, help="train.json, enables the exact-copy check")
     ap.add_argument("--neighbors", default=None, help="for --mode retrieval")
     ap.add_argument("--max_words", type=int, default=60, help="truncate refs and preds (0 = off)")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
+    # Mode: Crosscheck
+    if args.mode == "crosscheck":
+        assert args.pred, "--pred is required for --mode crosscheck"
+        with open(args.pred) as f:
+            pred_file = json.load(f)
+
+        priors_data = {}
+        if args.priors and os.path.exists(args.priors):
+            with open(args.priors) as f:
+                priors_data = json.load(f)
+
+        preds = pred_file.get("predictions", []) if isinstance(pred_file, dict) and "predictions" in pred_file else []
+        if not preds and isinstance(pred_file, dict):
+            preds = [{"uid": k, "generated": v} for k, v in pred_file.items()]
+
+        concordance_scores = []
+        total_omissions = 0
+        total_hallucinations = 0
+        verified_count = 0
+
+        for p in preds:
+            uid = str(p.get("uid", ""))
+            text = p.get("generated", "")
+            study_priors = priors_data.get(uid, {})
+            res = cross_check_report(text, study_priors)
+            concordance_scores.append(res["concordance_score"])
+            total_omissions += res["omissions_count"]
+            total_hallucinations += res["hallucinations_count"]
+            if res["verification_status"] == "VERIFIED_CONCORDANT":
+                verified_count += 1
+
+        mean_concordance = sum(concordance_scores) / max(len(concordance_scores), 1)
+        print("=" * 60)
+        print(f"CLINICAL CROSS-CHECK AUDIT (N={len(concordance_scores)} studies):")
+        print(f"  Mean Clinical Concordance: {mean_concordance:.2f}%")
+        print(f"  Verified Concordant:        {verified_count} / {len(concordance_scores)} ({verified_count/max(len(concordance_scores),1):.1%})")
+        print(f"  Total Omissions Detected:   {total_omissions}")
+        print(f"  Total Hallucinations:       {total_hallucinations}")
+        print("=" * 60)
+
+        if args.out:
+            with open(args.out, "w") as f:
+                json.dump({
+                    "mean_concordance": round(mean_concordance, 2),
+                    "verified_concordant_rate": round(verified_count / max(len(concordance_scores), 1), 4),
+                    "total_omissions": total_omissions,
+                    "total_hallucinations": total_hallucinations,
+                    "num_studies": len(concordance_scores),
+                }, f, indent=2)
+        return
+
+    assert args.ref, "--ref required for NLG scoring modes"
     ref_recs = load_ref(args.ref)
     refs = {r["uid"]: truncate(r["findings"], args.max_words) for r in ref_recs}
 

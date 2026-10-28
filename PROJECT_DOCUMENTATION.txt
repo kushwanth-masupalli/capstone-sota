@@ -1,0 +1,960 @@
+================================================================================
+DUAL-VIEW RAG-VLM - IU X-RAY RADIOLOGY REPORT GENERATION
+Complete Project Documentation
+Generated from a full read of this repository (README.md, plan.md, plan2.md,
+research_paper.md, commit1.txt, all files in src/, notebooks/, app.py,
+run_pipeline.py, data/, processed/ and outputs/ files, and the git commit log).
+Note: all facts below come from repository files. Where a value appears in
+conflicting sources, both are reported. Where a fact is absent, the text says
+"Not found in repo".
+================================================================================
+
+
+--------------------------------------------------------------------------------
+1. PROJECT TITLE, PROBLEM STATEMENT AND OBJECTIVE
+--------------------------------------------------------------------------------
+
+Title
+  "Dual-View RAG-VLM: IU X-Ray Report Generation"
+  (in research_paper.md the full title is: "Dual-View RAG-VLM: Empirical
+  Baseline Auditing and Consensus Decoding for Automated Chest Radiograph
+  Report Generation Under Consumer Hardware Constraints").
+  Author listed in research_paper.md: Masupalli Kushwanth, Capstone SOTA
+  Research Project, October 2026.
+
+Problem statement
+  Automatically generating the "findings" section of a chest X-ray report from
+  a paired frontal + lateral radiograph study. Radiologists spend large amounts
+  of time writing these reports, so the task is to have a machine interpret
+  both views of a chest X-ray and write a clinically descriptive text report.
+  The task is evaluated on the Indiana University Chest X-Ray (IU X-Ray)
+  dataset against published state-of-the-art (SOTA) systems.
+
+Objective (from plan.md, plan2.md and commit1.txt)
+  Beat the published benchmark table on at least one headline metric, using a
+  fixed, reproducible, leakage-free protocol, on consumer-grade hardware
+  (a single 6 GB laptop GPU), without degrading clinical accuracy.
+
+  Explicit targets:
+    Primary 1:  ROUGE-L > 0.411  (to beat DART, CVPR 2025)
+    Primary 2:  METEOR  > 0.316  (to beat LePaX, ECCV 2026)
+    Stretch 1:  BLEU-4  > 0.235  (LePaX, ECCV 2026)
+    Stretch 2:  BLEU-1  > 0.531  (LePaX, ECCV 2026)
+  (BLEU, METEOR, ROUGE-L and CIDEr are automatic text-overlap scores used to
+  grade generated reports against radiologist-written references.)
+
+  
+
+  Terminology used in this document, briefly explained:
+    VLM: vision-language model, a model that reads images and produces text.
+    RAG: retrieval-augmented generation, feeding similar past cases into the
+         prompt before generation.
+    QLoRA: fine-tuning a quantized (4-bit) large language model by training
+         only small low-rank adapter matrices.
+    MBR: Minimum Bayes Risk decoding, generating many candidate reports and
+         picking the candidate that agrees most with the other candidates.
+
+
+--------------------------------------------------------------------------------
+2. DATASET: SOURCE, SIZE, SPLITS, PREPROCESSING AND CLEANING
+--------------------------------------------------------------------------------
+
+Source
+  Indiana University Chest X-Ray collection (IU X-Ray), originally published
+  by Demner-Fushman et al., "Preparing a collection of radiology examinations
+  for distribution and retrieval", JAMIA 2016. The local copy is the
+  Kaggle-style CSV version with PNG images.
+
+Raw files in data/
+  - indiana_reports.csv   : 3,852 lines (3,851 report rows). Columns: uid,
+                            MeSH, Problems, image, indication, comparison,
+                            findings, impression.
+  - indiana_projections.csv : 7,468 image projection records (per commit1.txt:
+                            3,818 Frontal, 3,648 Lateral), mapping uid ->
+                            filename -> projection.
+  - images/               : 7,470 PNG images (count verified on disk).
+  - dataset.txt           : analysis of the Problems column, analyzed on
+                            2026-09-05. Key figures from that file: 3,851
+                            report rows, 7,946 problem tokens after splitting
+                            on ";" , 121 unique tokens, 1,379 rows (~36%)
+                            labelled "normal", 92 rows contain "No Indexing"
+                            (noise), min/median/max problems per report =
+                            1 / 1 / 12.
+
+Preprocessing and cleaning (src/prepare_data.py)
+  - One record per study: {uid, frontal_path, lateral_path, has_lateral,
+    findings, labels_14, label_source}. First frontal image and first lateral
+    image are resolved per uid.
+  - Text cleaning function clean_report():
+      - lowercase everything;
+      - remove ONLY de-identification placeholders with the word-boundary
+        regex: re.sub(r"\bx{2,}\b", " ", t)  (so "pneumothorax" survives but
+        "XXXX" is removed);
+      - normalize whitespace with re.sub(r"\s+", " ", t);
+      - remove spaces before punctuation with re.sub(r"\s([.,;:])", r"\1", t);
+      - truncate to MAX_WORDS = 60 words (an R2Gen-convention cap).
+  - Target text = the "findings" field (impression fallback only with the
+    optional --impression_fallback flag, which was NOT used: stats.json shows
+    impression_fallback = false).
+  - Study inclusion (primary protocol): a study is kept only if it has a
+    frontal image, a lateral image and non-empty findings. The secondary
+    variants (--include_single_view duplicating the frontal image) were not
+    used in the locked split.
+  - Weak 14-finding labels are extracted from the dataset's own MeSH and
+    Problems columns with regex rules (label_source = "mesh_weak"), for the
+    standard CheXpert/NIH 14 labels: Enlarged Cardiomediastinum,
+    Cardiomegaly, Lung Opacity, Lung Lesion, Edema, Consolidation, Pneumonia,
+    Atelectasis, Pneumothorax, Pleural Effusion, Pleural Other, Fracture,
+    Support Devices, No Finding. A CheXbert-based labeler was planned
+    (plan2.md section 2.4) but not installed; the weak rule labels are what
+    the repo used.
+
+Splits
+  - Computed once with random.Random(seed=42), split at the study "uid"
+    level, about 70/10/20. Saved to processed/splits.json and treated as
+    locked. Verbatim counts from processed/stats.json:
+        total records kept : 2,943
+        train : 2,060
+        val   :   294
+        test  :   589
+  - Dropped study counts (stats.json "dropped"):
+        empty_text    : 445
+        no_lateral    : 301
+        no_frontal    : 162
+    (commit1.txt says "Discarded 174 single-view studies"; stats.json says
+    301 no_lateral drops; the file that produced the locked split,
+    stats.json, is authoritative.)
+  - Important documented limitation (plan.md/plan2.md and code comments):
+    the CSVs contain NO patient id, so patient-level isolation is impossible;
+    isolation is by uid only. R2Gen's own split is about 2,069/296/590, so
+    this split is close to but NOT identical to R2Gen's; the repo states this
+    openly (prepare_data.py prints this warning).
+
+Dataset statistics (processed/stats.json)
+  - mean number of words in cleaned findings : 29.88
+  - fraction of exact duplicate reports in train : 0.266 (26.6%)
+  - most common train report (31 occurrences):
+    "the heart and lungs have in the interval. both lungs are clear and
+     expanded. heart and mediastinum normal."
+  - weak label prevalence over all records:
+        No Finding                  1085
+        Lung Opacity                 346
+        Lung Lesion                  380
+        Support Devices              317
+        Cardiomegaly                 239
+        Atelectasis                  231
+        Pleural Effusion              97
+        Fracture                      70
+        Pleural Other                 32
+        Pneumonia                     31
+        Edema                         30
+        Pneumothorax                  14
+        Consolidation                 21
+        Enlarged Cardiomediastinum     7
+
+
+--------------------------------------------------------------------------------
+3. TOOLS, LIBRARIES, MODELS AND HARDWARE USED, AND WHY EACH WAS CHOSEN
+--------------------------------------------------------------------------------
+
+Languages / runtimes
+  - Python 3.10+ per plan.md; requirements.txt header says Python 3.11.
+  - Java required for pycocoevalcap's Stanford PTBTokenizer. commit1.txt says
+    "Java 1.8", the notebook installs "default-jre", and research_paper.md
+    says "Java Runtime 21 LTS". All three statements exist in the repo; the
+    exact version actually used is not definitively recorded.
+  - PyTorch: requirements.txt says torch>=2.1; README says PyTorch 2.6+;
+    research_paper.md says PyTorch 2.7.0+cu128 was used on the local machine.
+
+Python libraries (requirements.txt) and why each is used
+  - torch, torchvision        : model training and image transforms.
+  - transformers>=4.40        : loading Qwen2.5-3B-Instruct and RAD-DINO and
+                                the tokenizers/processors.
+  - tokenizers>=0.19          : fast tokenizer backend for transformers.
+  - peft>=0.10.0              : LoRA adapters for parameter-efficient tuning
+                                (keeps trainable parameters at ~1.9% of the
+                                model so it fits in 6 GB VRAM).
+  - bitsandbytes>=0.43.0      : 4-bit NF4 quantization of the LLM (frees VRAM).
+  - accelerate>=0.29.0        : device/quantization plumbing for transformers.
+  - faiss-cpu>=1.7.4          : exact nearest-neighbour retrieval index
+                                (IndexFlatIP, inner product on L2-normalized
+                                vectors = cosine similarity).
+  - scikit-learn>=1.3         : LogisticRegression for the 14-finding linear
+                                probe, KFold for 5-fold OOF priors,
+                                roc_auc_score for AUC evaluation.
+  - pandas>=2.0               : CSV ingestion in prepare_data.py and the
+                                benchmark table in run_pipeline.py.
+  - numpy<2                   : numerical arrays (kept below v2 because
+                                faiss/torch stacks are more stable with it).
+  - pillow>=10.0              : image loading.
+  - pycocoevalcap>=1.2        : OFFICIAL metric suite (BLEU-1..4, METEOR 1.5,
+                                ROUGE-L, CIDEr). Chosen so scores are computed
+                                with the same tool the literature uses,
+                                including Stanford PTBTokenizer.
+  - rouge-score and nltk      : nltk is the fallback METEOR implementation if
+                                the Java METEOR pipe fails (in evaluate.py).
+  - tqdm, tabulate            : progress bars and table printing.
+
+Models used and why
+  - Vision encoder: microsoft/rad-dino (ViT-B/14, 518x518 native resolution,
+    feature dim D_enc = 768, FROZEN). Why (from research_paper.md): it is a
+    ViT pre-trained exclusively on biomedical radiographs with self-supervised
+    DINOv2 objectives, so its features transfer better to X-rays than
+    general-domain CLIP-style encoders; it also supports high native
+    resolution. Evidence it is good: the linear probe on its features reaches
+    Macro-AUC 0.8135 (section 7).
+    - Its 518/14 = 37x37 = 1,369 patch tokens + 1 CLS token are pooled with
+      nn.AdaptiveAvgPool2d((12,12)) to exactly 144 tokens per view.
+  - Language model: Qwen/Qwen2.5-3B-Instruct. Why: a strong open 3B-parameter
+    instruction-tuned LLM small enough for 4-bit QLoRA fine-tuning on a
+    6 GB laptop GPU or a Colab T4. Configuration: 4-bit NF4 + double
+    quantization, bf16 where supported else fp16, LoRA r=32, alpha=64,
+    dropout 0.1 on all attention projections (q_proj, k_proj, v_proj, o_proj)
+    and MLP projections (gate_proj, up_proj, down_proj). Trainable parameters
+    (research_paper.md): 59,867,136 = 1.90% of the 3.14B-parameter model.
+    plan.md originally listed Qwen3-4B or LLaMA 3.1-8B as options; the final
+    code standardizes on Qwen2.5-3B-Instruct.
+
+Hardware
+  - Development/primary measurement machine: NVIDIA GeForce RTX 4050 Laptop
+    GPU, 6.00 GB VRAM (research_paper.md). Peak VRAM recorded during
+    training: 4,921.6-4,921.7 MB (outputs/training_log_seed42.json).
+  - Cloud option: Google Colab T4 16 GB, L4 24 GB, or A100 40 GB (README,
+    notebook, commit1.txt). The T4 path uses batch_size=2 with gradient
+    accumulation 8; the 6 GB path uses batch_size=1 with accumulation 16;
+    large GPUs use batch_size=4 with accumulation 4. Effective batch size is
+    always 16. Memory allocator flag: expandable_segments:True to prevent
+    CUDA OOM.
+  - Why consumer hardware: a stated contribution of the project is showing
+    that the whole pipeline (vision encoder, retrieval, LLM fine-tuning,
+    consensus decoding) runs on a single 6 GB laptop GPU with no MIMIC-CXR
+    pre-training and no server cluster.
+
+Why not other options (from the plans)
+  - BiomedCLIP / MedSigLIP were considered as encoders but RAD-DINO was
+    chosen for radiograph-native pre-training (plan2.md section 3.1).
+  - MIMIC-CXR pre-training was optional and skipped (needs PhysioNet
+    credentialed access; plan.md section 1).
+  - Grad checkpointing + 4-bit quantization + small LLM were the mitigations
+    for VRAM limits (plan.md section 9).
+
+
+--------------------------------------------------------------------------------
+4. ARCHITECTURE: COMPONENTS, DATA FLOW AND TEXT DIAGRAM
+--------------------------------------------------------------------------------
+
+Components
+  1. Dual-view visual encoding. Frontal and lateral radiographs, resized to
+     518x518 with RAD-DINO normalization stats (mean 0.5307 x3, std 0.2583 x3),
+     pass through the frozen RAD-DINO ViT-B/14. Output patch grid 37x37 is
+     reshaped to [B, D, H, W] and average-pooled to 12x12 = 144 tokens per
+     view (288 total). Per-study pooled features are pre-computed ONCE and
+     cached to disk in fp16 at processed/feats/{uid}.pt (this removes the
+     encoder from the training loop entirely, the main speed lever).
+  2. Global study embedding and retrieval.concat(mean(frontal), mean(lateral))
+     gives a 1,536-dim vector, L2-normalized. A faiss.IndexFlatIP is built
+     over TRAIN studies only (N=2,060). At query time top-k (k=2) similar
+     training findings are retrieved.
+     Leakage guards (strict, stated in README, plan2.md and code):
+       - val and test studies are NEVER indexed;
+       - during training, the query study's own uid is excluded from the
+         candidate pool (search k+5 or k+10 candidates and skip own uid).
+  3. Auxiliary clinical head. A Linear(1536 -> 14) head on the dual-view
+     global vector predicts the 14 findings; BCE loss; weight 0.2 in the
+     total loss. Additionally, an offline 14-finding logistic-regression
+     linear probe on the cached features produces clinical probability
+     priors for every study.
+     Train/test mismatch fix (plan2.md section 3.3): training prompts use
+     5-fold OUT-OF-FOLD (OOF) probe probabilities (processed/
+     train_oof_priors.json) so the indicators in training prompts are as
+     noisy as the test-time predictions from the probe trained on full train
+     (processed/val_priors.json, processed/test_priors.json). Ground-truth
+     labels are never put verbatim into prompts.
+  4. Projector and view embeddings. Learned view embeddings of shape
+     [1, 144, 768] are added to each view's tokens (so the LLM can tell
+     frontal from lateral), then a 2-layer MLP (Linear(768 -> 2048) -> GELU
+     -> Linear(2048 -> 2048)) maps visual tokens into the LLM embedding
+     space (Qwen2.5-3B hidden size = 2048). Projector, classifier head and
+     view embeddings are kept in float32 for fp16 numerical stability.
+  5. Prompt format (ChatML, Qwen format). The dataset builds a prompt with
+     288 "<|image_pad|>" placeholder tokens, one "Predicted indicators:"
+     line of clinical probabilities and two retrieved "Similar case" lines:
+       <|im_start|>system
+       You are an expert radiologist. Write the findings section of a chest
+       X-ray report. Use only what the images and indicators support.<|im_end|>
+       <|im_start|>user
+       [288 image_pad tokens]
+       Predicted indicators: cardiomegaly 0.12, pleural effusion 0.05, ...
+       Similar case 1: "..."
+       Similar case 2: "..."
+       Write the findings.<|im_end|>
+       <|im_start|>assistant
+       {target findings}<|im_end|>            (training only)
+     At training, loss is computed ONLY on assistant tokens (all prompt
+     tokens masked with -100). Max sequence length 640 tokens. The visual
+     tokens are fused by replacing the image_pad embeddings with projected
+     visual embeddings inside the LLM input embeddings.
+  6. LLM with QLoRA. Qwen2.5-3B-Instruct in 4-bit NF4 with gradient
+     checkpointing; LoRA adapters trainable (section 3).
+  7. MBR consensus decoding (inference). For each study, a pool of 16
+     candidates is generated (top 4 beam-search outputs + 12 stochastic
+     samples at temperature 0.7, top-p 0.9), deduplicated and truncated to
+     60 words. A fast pure-Python utility (no Java):
+         utility(a,b) = 0.6 * ROUGE-L(beta=1.2, LCS proxy) + 0.4 * (unigram
+                        F1 + bigram F1)/2
+     picks the medoid candidate argmax_i mean_{j != i} U(c_i, c_j). Official
+     pycocoevalcap scoring runs only on the final selected reports.
+
+Data flow summary
+  raw CSVs + images
+      -> prepare_data.py -> processed/{train,val,test}.json + splits.json
+      -> cache_features.py -> processed/feats/{uid}.pt + train_faiss.index
+                             + train_faiss_meta.json + *_priors.json + E1
+      -> train_sft.py (Stage 1 warmup, then Stage 2 QLoRA SFT)
+           -> outputs/checkpoints/{stage1_final, stage2_best, ...}
+      -> generate_mbr.py -> outputs/test_*_predictions.json (with metrics)
+      -> evaluate.py / run_pipeline.py -> benchmark comparison table
+
+Text diagram (adapted from README.md and research_paper.md)
+
+    Frontal image --+
+                    |   RAD-DINO ViT-B/14 (frozen, 518x518)
+    Lateral image --+
+                    |
+        +-----------+----------------+
+        |                           |
+    Spatial pooling            Global pooling
+    AdaptiveAvgPool2d          concat(mean_f, mean_l)
+    (12,12) -> 144 tok/view    -> 1536-dim vector, L2-norm
+        |                           |
+    + view embeddings             +------------+-------------+
+    (frontal / lateral)           |            |             |
+        |                    FAISS train   linear probe    FAISS retrieval
+        |                    index only    (14 findings,   top-2 train
+        |                    (2060)        AUC 0.8135)     findings
+        |                           |            |             |
+        |                    train-time       OOF /         similar cases
+        |                    own-uid          test          in prompt
+        |                    exclusion        priors
+        |                           |            |             |
+    2-layer MLP projector    (train index N=2595 ... see note)
+    768 -> 2048 -> 2048
+        |
+    288 <|image_pad|> tokens fused into ChatML prompt
+        |
+    Qwen2.5-3B-Instruct (4-bit NF4 QLoRA r=32 alpha=64, dropout 0.1)
+        |
+    Candidate pool (beam 4 + stochastic samples T=0.7 top-p 0.9)
+        |
+    MBR consensus (utility = 0.6*ROUGE-L + 0.4*(uni+bi F1)/2)
+        |
+    Final findings report
+
+Note: the FAISS index holds N=2,060 train studies of dimension 1,536
+(commit1.txt confirms "IndexFlatIP, 1,536-dim, N=2,060").
+
+
+--------------------------------------------------------------------------------
+5. METHODOLOGY: TRAINING STAGES, LOSSES, HYPERPARAMETERS, RETRIEVAL,
+   DECODING AND EVALUATION PROTOCOL
+--------------------------------------------------------------------------------
+
+Loss function
+    L = L_CE(report tokens) + 0.2 * L_BCE(14 findings)
+  L_CE is the standard language-modeling cross-entropy over assistant tokens
+  only (prompt tokens masked with -100 in dataset.py).  L_BCE is binary cross-entropy with logits on the 14-finding multi-label
+  vector. The 0.2 weight is cls_loss_weight in model.py. An identical
+  formula appears
+  in plan2.md section 4, model.py docstring and train_sft.py docstring.
+
+Training stages (train_sft.py)
+  Stage 1 - warmup: trains ONLY the MLP projector, the classifier head and
+    the view embeddings; the whole LLM is frozen. Code default --epochs_s1 1
+    (commit1.txt describes 3 epochs and model.py's docstring matches the
+    plan's lr scheme; the code parameter groups are):
+        projector        lr = 2e-4
+        classifier head  lr = 2e-4
+        view embeddings  lr = 1e-4
+    (plan2.md's table says Stage 1 = 3 epochs at lr 1e-3; the shipped code
+    uses 2e-4 with 1 epoch by default - both are in the repo.)
+  Stage 2 - SFT: unfreezes LoRA adapters in addition to projector, head and
+    view embeddings; encoder still frozen. Code defaults:
+        LoRA             lr = 5e-5   (--lr_lora, with dropout 0.1)
+        projector        lr = 2e-5
+        classifier head  lr = 1e-4
+        view embeddings  lr = 2e-5
+        --epochs_s2 default 5   (plan2.md planned 10-12; commit1.txt says 10)
+  Common settings:
+        optimizer   AdamW, weight decay 0.01
+        schedule    linear warmup for 10% of total steps, then cosine
+                    annealing down to eta_min = 1e-6 (SequentialLR)
+        effective batch 16: batch_size x grad_accum (1x16 on 6 GB,
+                    2x8 on T4-class, 4x4 on large GPUs; auto-detected from
+                    VRAM in train_sft.py and run_pipeline.py)
+        gradient clipping  max_norm = 1.0 (skip optimizer step if grad norm
+                    is NaN/Inf)
+        NaN/Inf loss guard: batch is skipped and gradients zeroed
+        seed: default 42 (set_seed; plan.md proposed seeds 42/1337/2026 for
+              multi-seed final runs; only seed 42 is recorded in outputs)
+        gradient checkpointing on the LLM
+        fault-tolerant checkpoints every --save_steps (50) steps, plus at
+        every epoch end: full optimizer/scheduler/RNG state so runs can
+        resume mid-epoch after a crash; --resume_from, --auto-resume and
+        --fresh_s2 flags manage resume logic; stage2_best is saved on
+        validation improvement; early stopping in Stage 2 with patience 3.
+  Validation during training: a FAST proxy only - greedy generation
+  (max_new_tokens 64, 1 beam) on 20 validation samples, scored with a local
+  Python LCS ROUGE-L (rouge_l_f1), NOT the official pycocoevalcap.
+
+Retrieval protocol
+  - Index: faiss.IndexFlatIP over L2-normalized 1,536-dim dual-view global
+    vectors of TRAIN studies only (N=2,060), saved to
+    processed/train_faiss.index with metadata processed/
+    train_faiss_meta.json (idx, uid, findings, labels_14).
+  - k = 2 retrieved cases at train and test prompts.
+  - Training queries exclude their own uid (Dataset._retrieve_similar_cases).
+    Val/test queries search the full train index.
+  - Rationale documented in plan2.md 3.3-3.4: only "text equals target"
+    candidates were NOT excluded, because duplicate normal reports are
+    legitimately common.
+
+Decoding protocol (generate_mbr.py, model.generate_report)
+  - Beam search: num_beams=4, repetition_penalty=1.05 (NOT 1.2: normal
+    reports legitimately repeat phrases - plan2.md section 5),
+    no_repeat_ngram_size=3, max_new_tokens=128 (a 60-token cap would cut
+    sentences off).
+  - Stochastic sampling: num_beams=1, temperature=0.7, top_p=0.9, top_k=50,
+    repetition_penalty=1.05, no_repeat_ngram_size=3.
+  - MBR mode: candidate pool of 16 (4 beams + 12 samples), dedup + 60-word
+    truncate, medoid selection via mbr_select() with utility() described
+    above. Note: research_paper.md and app.py describe an 8-candidate pool
+    (4 beams + 4 samples) with slightly different MBR scores; the shipped
+    outputs file outputs/test_mbr_predictions.json records n_candidates=16.
+    Both variants exist in the repo documents; see section 7.
+
+Evaluation protocol (evaluate.py, cache_features.py, generate_mbr.py)
+  - Official headline scorer: pycocoevalcap with Stanford PTBTokenizer:
+    BLEU-1..4, METEOR (Java METEOR 1.5; NLTK fallback on pipe failure),
+    ROUGE-L, CIDEr.
+  - References and hypotheses are lowercased and truncated to 60 words
+    (--max_words 60 default, 0 disables).
+  - Sanity checks required by the plan:
+      gt mode: ground truth vs itself must be about 1.0;
+      normal mode: constant normal report = E0 floor;
+      retrieval mode: top-1 neighbour copy = E1 hurdle.
+  - Abnormal-only subset scoring: studies whose weak label "No Finding" is
+    0 (there are 355 in test) are scored separately to detect collapse to
+    the normal template.
+  - Exact-copy check: rate at which generated reports are verbatim copies of
+    a train report.
+  - Clinical metrics CheXbert F1 and RadGraph F1: listed in plan2.md as
+    targets but explicitly NOT computed; evaluate.py prints "clinical
+    metrics (CheXbert F1, RadGraph F1) are not computed here".
+  - Multi-seed 3-run protocol and paired bootstrap (1,000 resamples) planned
+    in plan.md/plan2.md; not found measured in the repo outputs.
+
+Commands (from README, exactly)
+  python src/prepare_data.py --data_dir data --out_dir processed
+  python src/evaluate.py --mode normal --ref processed/test.json
+  python src/cache_features.py --batch_size 16 --encoder microsoft/rad-dino
+  python src/train_sft.py --stage 0 --batch_size 2 --grad_accum 8 --lr_lora 5e-5 --lora_dropout 0.1
+  python src/train_sft.py --stage 2 --fresh_s2 --epochs_s2 10 --lr_lora 5e-5 --lora_dropout 0.1
+  python src/generate_mbr.py --checkpoint_dir outputs/checkpoints/stage2_best \
+         --split test --mode mbr --n_candidates 16 \
+         --out_json outputs/test_mbr_predictions.json
+  python src/generate_mbr.py --checkpoint_dir outputs/checkpoints/stage2_best --mode beam
+  python src/generate_mbr.py --checkpoint_dir outputs/checkpoints/stage2_best --mode sample
+  Entire pipeline: python run_pipeline.py
+
+
+--------------------------------------------------------------------------------
+6. CODEBASE WALKTHROUGH: WHAT EACH FILE/FOLDER DOES AND HOW THEY CONNECT
+--------------------------------------------------------------------------------
+
+Top level
+  README.md             Project guide, benchmark tables, architecture
+                        (mermaid), Colab instructions, CLI commands, layout,
+                        citations.
+  plan.md               Original theoretical plan: goal/metrics, dataset
+                        phases, eval harness first, baseline, ordered
+                        improvements, MBR/RL boosts, risks, timeline.
+  plan2.md              Corrected Plan 2.1: fixed evaluation protocol,
+                        corrected text cleaner, architecture with verified
+                        shapes, OOF prior fix, leakage rules, training
+                        protocol, decoding, ablation matrix E0-E7, build
+                        order.
+  commit1.txt           Execution manifest of the first big commit: dataset
+                        ingestion numbers, bug fixes, measured E0/E1 and
+                        probe results, source tree description, Colab steps.
+  research_paper.md     Write-up styled as a research paper (356 lines),
+                        including the E0/E1 audit, method, MBR results
+                        (N=8 variant), limitations.
+  scratch_analysis.txt  Very long text dump (8,408 lines) of DART
+                        (CVPR 2025) and related competitor papers used for
+                        the benchmark numbers.
+  paper_3_summary.txt   Extract of MPDRL (Frontiers in AI 2026), including its
+                        IU X-Ray results BLEU-1 0.508, CheXbert F1 0.437,
+                        RadGraph F1 0.256.
+  paper_4_summary.txt   Extract of DAMPER (AAAI 2025 / arXiv 2412.14535).
+  paper_5_summary.txt   Extract of KiUT (CVPR 2023) - Knowledge-injected
+                        U-Transformer.
+  requirements.txt      Locked dependency list (quoted in section 3).
+  run_pipeline.py       One-command end-to-end runner: system/VRAM check with
+                        automatic batch-size choice, E0/E1 floor checks,
+                        feature-cache check (expects 2,943 files, or
+                        unzipping feats.zip), calls train_sft.py and
+                        generate_mbr.py as subprocesses with offline env vars,
+                        prints the final benchmark table and "win" analysis.
+  app.py                Streamlit web frontend (442 lines): loads test split,
+                        priors, predictions from outputs/*.json and benchmark
+                        table; Tabs for study exploration (image + priors +
+                        generated vs ground-truth report + local overlap
+                        metrics), benchmark comparison, and the research
+                        paper viewer.
+  feats.zip             Archive of the cached visual features (referenced by
+                        run_pipeline.py step 2 as an option to unzip into
+                        processed/feats/).
+  image.png             Screenshot/illustration committed with the first
+                        commit contents not explained further in repo.
+
+Notebooks
+  notebooks/colab_runner.ipynb      1-click Google Colab runner: Step 0
+                        hardware check + Java (default-jre) + pip deps,
+                        Step 1 workspace selection (Google Drive mount at
+                        /content/drive/MyDrive/capstone or git clone of
+                        https://github.com/kushwanth-masupalli/capstone-sota.git),
+                        Step 2 data prep, Step 3 E0 baseline, Step 4 feature
+                        caching + FAISS (~2.5 min on T4 per commit1.txt),
+                        Step 5 two-stage training, Step 6 MBR decoding +
+                        official scoring, plus benchmark comparison.
+  src/create_colab_notebook.py      Programmatic generator that writes the
+                        notebook (the notebook is compiled from this script;
+                        they must be kept in sync).
+
+Data folder
+  data/dataset.txt              Problems-column statistics (section 2).
+  data/indiana_reports.csv      Raw reports (3,851 rows).
+  data/indiana_projections.csv  Raw image-projection mapping (7,467 records
+                                per file, commit1 says 7,468).
+  data/images/                  7,470 PNG radiographs.
+
+Processed folder (generated artifacts)
+  processed/train.json, val.json, test.json   Study records per split.
+  processed/splits.json       Locked uid lists per split.
+  processed/stats.json        Split sizes, drops, mean words, duplicates,
+                              label prevalence (section 2).
+  processed/train_labels.json uid -> 14-label vectors for train.
+  processed/feats/{uid}.pt    2,943 cached fp16 feature dicts per study
+                              (frontal [144,768], lateral [144,768], global
+                              [1536], labels).
+  processed/train_faiss.index FAISS IndexFlatIP over the 2,060 train vectors.
+  processed/train_faiss_meta.json  Metadata aligned with the index rows.
+  processed/train_oof_priors.json  5-fold OOF probe probabilities (train).
+  processed/val_priors.json / test_priors.json  Probe probabilities.
+
+Source files (src/)
+  prepare_data.py       Builds locked splits; cleaning + unit-tested
+                        behaviour (keeps "pneumothorax" intact), weak labels,
+                        stats.json, optional R2Gen annotation loading,
+                        optional single-view/impression fallbacks. Run first.
+  cache_features.py     Encoder forward over all splits (with transform built
+                        from the encoder's AutoImageProcessor), AdaptiveAvg-
+                        Pool2d((12,12)) pooling, per-study .pt caching,
+                        FAISS index build, E1 retrieval baseline evaluation,
+                        14-finding linear probe with 5-fold OOF priors and
+                        per-label AUC report to outputs/linear_probe_auc.json.
+                        Second in the pipeline.
+  dataset.py            IUReportDataset: loads cached features, dynamic
+                        FAISS query with train-time own-UID exclusion,
+                        prior text formatting (top non-zero indicators,
+                        threshold 0.05, plus No Finding), ChatML prompt with
+                        288 image_pad tokens, assistant-only label masking,
+                        max_seq_len 640; collate_fn pads dynamically.
+  model.py              DualViewRAGVLM: view embeddings, MLPProjector,
+                        classifier head, Qwen QLoRA setup (4-bit NF4, double
+                        quant, gradient checkpointing, targets all 7 linear
+                        projections), set_stage(1|2), forward() fusing visual
+                        embeddings into image_pad positions with the joint
+                        loss, and generate_report() (beams/sampling).
+  train_sft.py          Two-stage training engine: hardware-aware batch-size
+                        auto-config, offline-flow via download_model.py,
+                        auto-resume/--fresh_s2 logic, NaN guards, AdamW +
+                        warmup+cosine, gradient clipping, 50-step fault-
+                        tolerant checkpoints with full RNG/optimizer state,
+                        fast val ROUGE-L proxy on 20 samples, best/final
+                        checkpoint dirs, history log to
+                        outputs/training_log_seed{n}.json.
+  generate_mbr.py       Loads a checkpoint with load_weights(), builds the
+                        target dataset (is_training=False so val/test priors
+                        and full train index are used), generates in mbr /
+                        beam / sample modes, scores with pycocoevalcap, saves
+                        outputs/{split}_{mode}_predictions.json with
+                        headline_metrics and per-study predictions.
+  evaluate.py           Official scorer wrappers (coco_scores with PTB
+                        tokenizer), E0 normal / E1 retrieval / gt / score
+                        modes, exact-copy-rate check, abnormal-subset split,
+                        plus the fast MBR helpers (rouge_l_f1 LCS, ngram_f1,
+                        utility, mbr_select) reused by training validation
+                        and MBR decoding.
+  download_model.py     Resumable, fault-tolerant downloader for
+                        Qwen/Qwen2.5-3B-Instruct: clears stale HF locks,
+                        snapshot_download with retries, verifies shard
+                        completeness (is_model_complete), enabling 100%
+                        offline training afterwards.
+
+How they connect (execution order)
+  1) prepare_data.py -> 2) cache_features.py (needs processed/*.json)
+     -> 3) train_sft.py (needs feats + index + priors; uses dataset.py,
+     model.py, evaluate.py, download_model.py)
+     -> 4) generate_mbr.py (needs checkpoints + feats + index + priors; uses
+     dataset.py, model.py, evaluate.py)
+     - evaluate.py standalone for E0/gt/score modes; run_pipeline.py chains
+     1-4 and prints the comparison; app.py is a read-only viewer of outputs.
+
+
+--------------------------------------------------------------------------------
+7. EXPERIMENTS AND RESULTS: EVERY MEASURED METRIC IN A TABLE
+--------------------------------------------------------------------------------
+
+All numbers below are taken verbatim from the outputs/ JSON files and
+commit1.txt / research_paper.md / README.md. All were produced with official
+pycocoevalcap (Java + Stanford PTBTokenizer) on the locked test set unless
+noted. Formatting: metric values separated by spaces.
+
+7.1 Baseline floors on test set (N=589)  [outputs/normal_baseline.json and
+    outputs/e1_retrieval_baseline.json]
+
+  ID  Description                        BLEU-1 BLEU-2 BLEU-3 BLEU-4 METEOR ROUGE-L CIDEr
+  E0  Constant normal-report floor      0.2390 0.1447 0.0932 0.0603 0.1455  0.2809  0.1855
+  E1  Pure retrieval, top-1 train copy  0.3449 0.2020 0.1299 0.0871 0.1514  0.2513  0.1970
+
+  E0 abnormal-only subset (n=355):  BLEU-1 0.1768, BLEU-2 0.1008, BLEU-3
+  0.0611, BLEU-4 0.0377, METEOR 0.1220, ROUGE-L 0.2401, CIDEr 0.0774.
+  E0 exact copy of train report rate: 0.0.
+  E1 example records are stored inside outputs/e1_retrieval_baseline.json
+  (first sample: test uid 3039 predicted from retrieved train uid 1118).
+
+  E0 text used: "the lungs are clear. no focal consolidation, pneumothorax,
+  or pleural effusion. the cardiac silhouette is normal."
+
+7.2 Generated report results with the trained model
+    [outputs/test_beam_predictions.json, outputs/test_sample_predictions.json
+    - both full test N=589; outputs/test_mbr_predictions.json - MBR pilot on
+    the first 50 test studies with n_candidates=16]
+
+  Method                                N    BLEU-1 BLEU-2 BLEU-3 BLEU-4 METEOR ROUGE-L CIDEr
+  Beam search (4-beam)                  589  0.2728 0.1676 0.1155 0.0821 0.1360  0.2648  0.2915
+  Stochastic sample (T=0.7, p=0.9)      589  0.3275 0.1980 0.1274 0.0840 0.1512  0.2753  0.2483
+  MBR consensus (pilot, 16 candidates)   50  0.4053 0.2546 0.1666 0.1024 0.1926  0.3124  0.3026
+
+  Key observation in README.md: MBR consensus over the 16-candidate pool
+  (4 beams + 12 diverse stochastic samples at T=0.7) yields +13.2% BLEU-1,w
+  +4.8% ROUGE-L, +5.7% METEOR relative to greedy/beam-style decoding while
+  remaining strictly compliant with the no-leakage retrieval protocol.
+
+  DISCREPANCY to be transparent about: research_paper.md (and app.py) report
+  a different MBR configuration and numbers:
+     "Dual-View RAG-VLM (MBR Consensus N=8)"          :
+        BLEU-1 0.3820, BLEU-2 0.2355, BLEU-3 0.1525, BLEU-4 0.0975,
+        METEOR 0.1816, ROUGE-L 0.2951, CIDEr 0.3240   (+40.0% rel. BLEU-1 and
+        +33.5% rel. METEOR over beam)
+     "Dual-View RAG-VLM (MBR Pilot N=8, n=50)"        :
+        BLEU-1 0.4007, BLEU-2 0.2489, BLEU-3 0.1634, BLEU-4 0.1043,
+        METEOR 0.1875, ROUGE-L 0.3075, CIDEr 0.3812
+  while the saved outputs file has n_candidates=16 and the 0.4053-row above.
+  The README matches the saved N=16 test_mbr_predictions.json values; the
+  paper matches an earlier or parallel N=8 run whose raw file is not in the
+  repo. Both are reported here without alteration. Exact MBR inference
+  latency (research_paper.md): about 23.7 seconds per study for the N=8 pool
+  (0.04 studies/s) on the RTX 4050; throughput for the pooled N=16 file: not
+  found in repo beyond what is embedded in each predictions file.
+
+7.3 14-finding linear probe on frozen RAD-DINO dual-view features
+    [outputs/linear_probe_auc.json]
+
+  Finding                        AUC      Finding                  AUC
+  Pleural Effusion             0.9670     Atelectasis             0.7975
+  Pneumonia                    0.9408     Pleural Other           0.7790
+  Cardiomegaly                 0.8936     Fracture                0.7634
+  Pneumothorax                 0.8688     Lung Lesion             0.6931
+  Consolidation                0.8628     Enlarged Cardiomediast. 0.5000
+  No Finding                   0.8462
+  Support Devices              0.8277     MACRO-AVERAGE AUC       0.8135
+  Edema                        0.8254
+  Lung Opacity                 0.8241
+
+7.4 Training run log [outputs/training_log_seed42.json - Stage 2 only;
+   note that epoch 3 has no entry in the saved log]
+
+  Stage  Epoch  Train loss  Val ROUGE-L (proxy, 20 samples)  Epoch sec  Peak VRAM MB
+    2      1      1.4701              0.2382                    7376.3     4921.6
+    2      2      0.9954              0.3292                    6913.0     4921.6
+    2      4      0.7467              0.2191                    7880.9     4921.7
+    2      5      0.7452              0.2527                    5632.1     4921.7
+    2      6      0.6924              0.2762                    8107.3     4921.7
+  (No Stage 1 epoch is recorded in the saved log file. Epochs correspond to
+  about 1.5-2.3 hours each on the RTX 4050; epoch 2 had the best proxy value
+  0.3292.)
+
+7.5 Ablation matrix from plan2.md (section 7)
+  Planned ablations:
+    E0 constant normal report          : reported  : BLEU-1 0.2390, BLEU-4 0.0603, ROUGE-L 0.2809, METEOR 0.1455, CIDEr 0.1855
+    E1 retrieval only (top-1 copy)     : reported  : BLEU-1 0.3449, BLEU-4 0.0871, ROUGE-L 0.2513, METEOR 0.1514, CIDEr 0.1970
+    E2 frontal view only               : NOT measured
+    E3 frontal+lateral                 : NOT measured as an isolated ablation
+    E4 dual view + 14-finding prior    : NOT measured as an isolated ablation
+    E5 dual + prior + top-2 RAG        : the trained model corresponds to this
+                                         configuration, but per-component
+                                         isolated deltas were not measured
+    E6 dual + prior, MBR decoding      : partially covered by the decoding
+                                         comparison in 7.2 (full test MBR
+                                         not run; N=50 pilot only)
+    E7 full (RAG + MBR)                : pilot only (7.2)
+  So the components (prior + RAG + dual views) were always present together
+  in the trained model; only the DECODING axis (beam vs sample vs MBR) was
+  ablated with measured numbers, plus the E0/E1 and probe baselines.
+
+
+--------------------------------------------------------------------------------
+8. COMPARISON WITH PUBLISHED STATE-OF-THE-ART BENCHMARKS
+--------------------------------------------------------------------------------
+
+Published numbers used in this repo (from README.md, plan2.md, the DART
+paper text in scratch_analysis.txt). Column order: BLEU-1, BLEU-2, BLEU-3,
+BLEU-4, METEOR, ROUGE-L.
+
+  System              Venue/Year      BLEU-1 BLEU-2 BLEU-3 BLEU-4 METEOR ROUGE-L
+  DART / DATR         CVPR 2025       0.486  0.348  0.265  0.208  0.205   0.411
+  LePaX               ECCV 2026       0.531                0.235  0.316   0.402
+  MPDRL               Frontiers 2026  0.508                0.185  0.231   0.383
+  DAMPER              AAAI 2025       0.520                0.225  0.284   0.397
+  KiUT                CVPR 2023       0.525                0.185  0.242   0.409
+
+  Context rows the DART table also contains for IU X-ray (from
+  scratch_analysis.txt): R2Gen 0.470/0.304/0.219/0.165/0.187/0.371;
+  R2GenCMN 0.475/0.309/0.222/0.170/0.191/0.375; PPKED
+  0.483/0.315/0.224/0.168/0.190/0.376; METransformer
+  0.483/0.322/0.228/0.172/0.192/0.380; MA 0.501/0.328/0.230/0.170/0.386 /
+  METEOR 0.213.
+
+  MPDRL clinical numbers available in the repo (paper_3_summary.txt):
+    MPDRL on IU X-Ray: CheXbert precision 0.462, recall 0.414, F1 0.437;
+    RadGraph F1 (RG-F1) 0.256. This repo computes NO clinical metrics, so it
+    does not claim a clinical win (as plan2.md demanded).
+
+Head-to-head (best measured result of this repo in each column):
+  Metric       Best here (file/source)                     Published best    Gap
+  BLEU-1       0.4053 MBR pilot N=50 (test_mbr_predictions) 0.531 LePaX   -0.126
+  BLEU-2       0.2546 MBR pilot                             0.348 DART    -0.093
+  BLEU-3       0.1666 MBR pilot                             0.265 DART    -0.098
+  BLEU-4       0.1024 MBR pilot                             0.235 LePaX   -0.133
+  METEOR       0.1926 MBR pilot                             0.316 LePaX   -0.123
+  ROUGE-L      0.3124 MBR pilot                             0.411 DART    -0.099
+  CIDEr        0.3026 MBR pilot (our best CIDEr vs E1 0.1970/E0 0.1855);
+               published CIDEr values: not reported in the competitor
+               table used ("—"), so no comparison possible.
+
+Meets/beats status
+  - Neither primary target (ROUGE-L > 0.411, METEOR > 0.316) nor any stretch
+    target was reached. The repo does not claim a headline SOTA win: commit
+    message says "very close to sota", research_paper.md frames the result
+    as an honest baseline audit and near-SOTA under strict hardware limits.
+  - What IS beaten: all measured generation results beat E0 ROUGE-L floor in
+    BLEU-1/CIDEr, and:
+      * MBR pilot (0.4053 / 0.3124 / 0.1926) beats E1 retrieval hurdle
+        BLEU-1 (0.3449), E0 ROUGE-L floor (0.2809), and ROUGE-L and METEOR
+        of all local empirical baselines;
+      * sample mode (0.3275 BLEU-1) is just below E1 (0.3449) on BLEU-1;
+      * beam search (0.2728) is BELOW E1 on BLEU-1 and BELOW E0 on ROUGE-L
+        (0.2648 vs 0.2809) - documented as "mode collapse" evidence.
+  - research_paper.md notes the METEOR gap to DART (0.1816 N=8 MBR vs DART
+    0.205) is within 0.0234, arguing Qwen synonyms narrow METEOR specifically.
+  - Comparability caveats recorded in the repo itself: this split (589 test)
+    is seeded at uid level and close to but not identical to R2Gen's split;
+    competitor papers may or may not use pycocoevalcap identically (plan2.md
+    marks [VERIFY]); competitor systems use large-scale MIMIC-CXR
+    pre-training and server clusters, this project does not.
+
+
+--------------------------------------------------------------------------------
+9. CHALLENGES, BUGS FOUND AND FIXES, LIMITATIONS AND RISKS
+--------------------------------------------------------------------------------
+
+Bugs found and fixed (with the commit that fixed them)
+  1. Regex text-destroying bug (early data prep, fixed in plan2.md 2.3):
+     an earlier cleaner used re.sub(r'x+', '', text), which deleted every
+     letter "x" everywhere ("pneumothorax" -> "pneumothora", "exam" ->
+     "eam"). Fixed with the word-boundary-only placeholder removal
+     re.sub(r"\bx{2,}\b", " ", t). Present in final prepare_data.py.
+  2. Beam search "mode collapse" (documented in research_paper.md 5.2):
+     4-beam search scored BLEU-1 0.2728, below the E1 retrieval hurdle and
+     below the E0 ROUGE-L floor, because maximum-likelihood decoding
+     collapses onto generic safe template text. Mitigation: MBR consensus
+     decoding (results in 7.2); repetition penalty softened to 1.05 instead
+     of 1.2 because normal reports legitimately repeat phrases.
+  3. T4 OOM in Stage 2 (commit c950910 "fix(vram)"): safe batch_size=2 with
+     grad accumulation 8 and PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+     to prevent CUDA OOM.
+  4. PyTorch 2.6+ unpickler change (commit 482de73 "fix(torch)"): added
+     safe_torch_load with weights_only=False fallback (used in train_sft.py
+     and dataset.py).
+  5. METEOR Java pipe desync (commit 44a7109 "fix(eval)"): robust NLTK
+     fallback inside coco_scores();
+     try: Meteor().compute_score -> except: nltk.translate meteor_score.
+  6. fp16 instability (commit 59e1f16 "fix"): projector, classifier head and
+     view embeddings kept in float32; NaN/Inf loss and grad-norm guards that
+     skip the offending batch/step added in train_sft.py.
+  7. Device placement (commit 0e31def "fix"): all tensors and submodules
+     explicitly moved to the LLM device in model.py forward/generate.
+  8. Fractured downloads / offline reliability (commit 8404c5f "fix(train)"):
+     resumable fault-tolerant model downloader (download_model.py), step
+     checkpoints every 50 steps, auto-resume, offline env activation once
+     cached; commit 78ebf0f added resume_from/auto-resume for Stage 2.
+  9. Stale completed Stage 2 runs being auto-resumed incorrectly (commit
+     f711823 "fix(pipeline)"): auto-detection of a completed Stage 2
+     (epoch >= epochs_s2 in checkpoint_meta.json) plus a --fresh_s2 flag to
+     restart cleanly from the Stage 1 projector.
+ 10. top_k warning during beam search and slow HF hub startup (commit
+     c395ad7 "fix(eval)"): suppress top_k warning, enable offline mode for
+     faster startup.
+
+Challenges / limitations stated in the repo
+  - Small dataset: only 2,943 studies; 26.6% of train reports are exact
+    duplicates; rewards template memorization (E0/E1 audit exists precisely
+    for this).
+  - No patient id in the CSVs -> uid-level split only; same-patient leakage
+    cannot be excluded (documented in plan2.md 1 and 3.4).
+  - Retrieval candidates are not filtered for identical text.
+  - Weak labels only: 14 labels come from regex on MeSH/Problems (fallback),
+    no working CheXbert labeler installed; "Enlarged Cardiomediastinum" has
+    7 positive records and probe AUC 0.5000 (uninformative).
+  - Clinical metrics (CheXbert F1, RadGraph F1) not computed anywhere.
+  - Validation during training is a noisy proxy: 20 samples, greedy, local
+    LCS ROUGE-L, not the official scorer.
+  - MBR evaluated only on a pilot of 50 of the 589 test studies in the
+    saved outputs (full-test MBR numbers are in prose docs only).
+  - Multi-seed variance, paired bootstrap significance tests, and error
+    analysis of 30-50 reports were planned (plan.md/plan2.md phase 6) but no
+    seeds besides 42 and no bootstrap outputs are in the repo.
+  - Inference latency: about 23.7 s per study for the N=8 MBR pool on the
+    RTX 4050 (0.04 studies/s); real-time clinical deployment infeasible.
+  - Training time: roughly 1.5-2.3 hours per Stage 2 epoch on the 6 GB
+    laptop GPU (epoch_sec 5,632-8,107 s).
+  - Local lexical overfitting risk: no external pre-training; training
+    plateaus around epochs 3-5 per research_paper.md 7.4; mitigations used:
+    LoRA dropout 0.10, LoRA lr reduced to 5e-5 (commits 6c072ee, f711823).
+  - fp14/bf16: on T4 (no bf16) the stack must use fp16 with fp32 heads and
+    NaN monitoring; fallback plan was Qwen2.5-1.5B (plan2.md 3.5-3.6).
+
+Operational risks listed in plan.md/plan2.md with their mitigations
+  (summarised): non-comparable scores -> fixed split + own re-run baselines;
+  retrieval leakage -> train-only index and own-uid exclusion; normal-
+  template collapse -> classifier prior + abnormal-subset scoring + copy
+  check; truncation -> max_new_tokens=128; slow MBR -> fast Python utility,
+  Java scoring only on final picks; VRAM -> QLoRA + checkpointing + small
+  LLM; encoder-shape errors -> verify load and print shapes first.
+
+
+--------------------------------------------------------------------------------
+10. FINAL CONCLUSION: WHETHER THE GOALS WERE MET, WITH EVIDENCE
+--------------------------------------------------------------------------------
+
+Goal-by-goal assessment against the stated targets:
+
+  1) "Beat SOTA on at least one headline metric" - NOT MET.
+     Evidence: best measured ROUGE-L 0.3124 < 0.411 (DART); best METEOR
+     0.1926 < 0.316 (LePaX); best BLEU-4 0.1024 < 0.235; best BLEU-1 0.4053
+     < 0.531 (section 7 vs section 8). No published competitor number is
+     exceeded on any metric. The repo itself does not claim otherwise
+     (commit "very close to sota"; research_paper.md sells the honest gap).
+
+  2) "Run under a fixed, documented, leakage-free protocol on consumer
+     hardware" - MET.
+     Evidence: locked split 2,060/294/589 with safety assertions in
+     prepare_data.py; strict retrieval guards implemented in dataset.py and
+     cache_features.py (train-only index, own-uid exclusion at train time);
+     all headline metrics from official pycocoevalcap; training ran with
+     4,921.6 MB peak VRAM on a 6 GB RTX 4050 and full MBR inference on the
+     same device.
+
+  3) "Calibrate the benchmark with empirical floors" - MET.
+     Evidence: E0 (ROUGE-L 0.2809, BLEU-1 0.2390) and E1 (BLEU-1 0.3449)
+     measured on the same N=589 test set with the same scorer, showing that
+     pure retrieval clears a large fraction of published scores, plus the
+     abnormal-subset breakdown (355 abnormal test studies) and the exact-
+     copy check (0.0 for E0).
+
+  4) "Demonstrate a quality-generating multimodal model" - PARTIALLY MET.
+     Evidence: trained VLM works end-to-end; stochastic sampling beats E0
+     ROUGE-L floor in spirit only partially (0.2753 < 0.2809) and MBR pilot
+     clears both floors (0.3124 ROUGE-L, 0.4053 BLEU-1); but the val proxy
+     curve peaks at epoch 2 (0.3292) and later epochs fall back (0.2191 at
+     epoch 4), showing optimization instability.
+
+  5) "Clinical grounding" - PARTIALLY MET / NOT EVALUATED.
+     Evidence: the frozen RAD-DINO representation is clinically rich
+     (Macro-AUC 0.8135; Effusion 0.9670, Pneumonia 0.9408) and feeds priors
+     into prompts; but CheXbert F1 / RadGraph F1 were never computed, so
+     generated-report clinical factuality is NOT measured in this repo.
+
+  6) One-click reproducibility - MET: run_pipeline.py and
+     notebooks/colab_runner.ipynb cover the full chain from raw CSVs to the
+     benchmark table, with offline mode and fault-tolerant resume.
+
+Overall: the engineering and measurement goals were achieved; the
+competitive SOTA goals were not achieved (best result is "very close to"
+but below all five published systems, and below the E1 retrieval hurdle is
+NOT the case for MBR - MBR clears it).
+
+Evidence files backing every claim above: processed/stats.json,
+processed/splits.json, outputs/normal_baseline.json,
+outputs/e1_retrieval_baseline.json, outputs/linear_probe_auc.json,
+outputs/test_beam_predictions.json, outputs/test_sample_predictions.json,
+outputs/test_mbr_predictions.json, outputs/training_log_seed42.json,
+research_paper.md, README.md, commit1.txt and the git commit history
+(20 commits, 2026-09-30 through 2026-10-16).
+
+
+--------------------------------------------------------------------------------
+11. FUTURE WORK
+--------------------------------------------------------------------------------
+
+From the repo's own plans (plan.md sections 7-9, plan2.md sections 7-9,
+research_paper.md section 7.4), the explicitly intended next steps are:
+
+  1. Complete the MBR evaluation on the FULL test set (currently only the
+     N=50 pilot exists in outputs), and resolve the N=8 vs N=16
+     configuration discrepancy between research_paper.md and
+     outputs/test_mbr_predictions.json.
+  2. Encoder fine-tuning: unfreeze the top 2 encoder blocks (lr 1e-5),
+     giving up feature caching (plan2.md section 8).
+  3. RL fine-tuning (GRPO or PPO-style): reward = 0.5*ROUGE-L + 0.3*METEOR
+     + 0.2*RadGraph-F1 with a KL penalty to the SFT model and a length
+     penalty to prevent reward hacking; start from the best SFT checkpoint.
+  4. MIMIC-CXR pre-training before IU fine-tuning (needs PhysioNet
+     credentialed access) - called the largest expected lever since IU is
+     small (plan.md, plan2.md section 8).
+  5. Checkpoint/seed ensembling into the MBR candidate pool (3 seeds:
+     42/1337/2026 planned; report mean +/- std).
+  6. Paired bootstrap significance testing (1,000 resamples) against the
+     baselines.
+  7. Install a working CheXbert/RadGraph toolchain and report clinical F1
+     for the model AND for the E0/E1 re-run baselines; also report scores on
+     the abnormal-only subset for the final model.
+  8. Draft-verify-refine second generation pass for clinical accuracy
+     (plan2.md section 8, plan.md item 4 in Phase 4).
+  9. MBR pool tuning on val only: utility weights, N, temperature
+     (currently fixed at 0.6/0.4, 16, T=0.7).
+ 10. Error analysis of 30-50 sampled reports: hallucinated findings, missed
+     abnormalities, laterality errors, and copy-vs-retrieval rate (plan2.md
+     section 6; a copy-rate check exists in evaluate.py but no such analysis
+     output is in the repo).
+ 11. Generation-length and repetition-penalty tuning on val (plan.md).
+ 12. Deployment-side: parallelized speculative sampling or candidate
+     pruning to cut the ~23.7 s per-study MBR latency (research_paper.md
+     7.4); the Streamlit app.py could also be extended beyond its current
+     pre-computed-predictions viewer to interactive generation.
+
+================================================================================
+END OF DOCUMENT
+================================================================================

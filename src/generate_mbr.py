@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from dataset import IUReportDataset, collate_fn
 from evaluate import coco_scores, fmt, mbr_select, truncate, utility
 from model import DualViewRAGVLM
+from cross_check import cross_check_report
 
 
 def generate_study_candidates(
@@ -162,9 +163,17 @@ def run_inference(
         references_dict[uid] = ground_truth
         hypotheses_dict[uid] = selected_report
 
+        # Execute Clinical Cross-Check if priors available
+        study_priors = dataset.priors.get(uid, {})
+        cross_res = cross_check_report(selected_report, study_priors) if study_priors else None
+
         predictions.append({
             "uid": uid,
             "generated": selected_report,
+            "unchecked_report": selected_report,
+            "checked_report": cross_res["checked_report"] if cross_res else selected_report,
+            "concordance_score": cross_res["concordance_score"] if cross_res else 100.0,
+            "verification_status": cross_res["verification_status"] if cross_res else "UNVERIFIED",
             "ground_truth": ground_truth,
             "candidate_pool_size": len(candidate_pool),
         })

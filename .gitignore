@@ -5,12 +5,20 @@ outputs/checkpoints/
 *.zip
 .idea/
 
+# Scratch & test images
+scratch_*.png
+user_screenshot_xray.png
+
 # Python cache & compiled binaries
 __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
 .ipynb_checkpoints/
+
+# Frontend builds & dependencies
+frontend/node_modules/
+frontend/dist/
 
 # Environment & logs
 .env
