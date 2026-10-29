@@ -14,6 +14,7 @@ import sys
 import time
 from typing import Dict, List, Optional, Tuple, Any
 
+import cv2
 import numpy as np
 import pandas as pd
 from PIL import Image
@@ -23,6 +24,7 @@ import streamlit as st
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 from src.cross_check import ClinicalCrossChecker, cross_check_report, LABELS_14
 from src.image_validator import validate_image_triage
+from src.gradcam import GradCAMExplainer, COLORMAPS
 
 # Configure page settings
 st.set_page_config(
@@ -261,6 +263,15 @@ def load_baselines():
     return baselines
 
 
+@st.cache_resource
+def load_gradcam_explainer():
+    try:
+        return GradCAMExplainer()
+    except Exception as e:
+        print(f"[GradCAM] Error initializing GradCAM: {e}")
+        return None
+
+
 def compute_quick_metrics(pred: str, gt: str) -> Dict[str, float]:
     p_tokens = pred.lower().split()
     g_tokens = gt.lower().split()
@@ -316,8 +327,9 @@ def main():
     )
 
     # Top Tabs
-    tab_demo, tab_gallery, tab_crosscheck_deep, tab_benchmarks, tab_architecture = st.tabs([
+    tab_demo, tab_gradcam, tab_gallery, tab_crosscheck_deep, tab_benchmarks, tab_architecture = st.tabs([
         "🔬 Report Generation & Cross-Check",
+        "🔥 Grad-CAM Visual Explainability",
         "📚 Study Gallery",
         "🛡️ Interactive Cross-Check Test Bench",
         "📊 Benchmark Comparison & Baselines",
@@ -463,6 +475,47 @@ def main():
                     if len(train_meta) > 1:
                         st.markdown(f"> **Similar Case 2:** *\"{train_meta[1]['findings']}\"*")
 
+            # Grad-CAM Quick Saliency Expander
+            with st.expander("🔥 View Live Dual-View Grad-CAM Saliency Overlays", expanded=False):
+                explainer = load_gradcam_explainer()
+                if explainer and selected_uid:
+                    target_cand = [p for p in LABELS_14 if p != "No Finding"]
+                    default_idx = 1
+                    if priors:
+                        top_p = max((p for p in priors.items() if p[0] != "No Finding"), key=lambda x: x[1], default=("Cardiomegaly", 0.0))
+                        if top_p[0] in target_cand:
+                            default_idx = target_cand.index(top_p[0])
+
+                    gc_quick_pathology = st.selectbox(
+                        "Target Pathology Finding:",
+                        target_cand,
+                        index=default_idx,
+                        key="gc_quick_pathology",
+                    )
+                    try:
+                        quick_res = explainer.explain(
+                            uid=selected_uid,
+                            pathology=gc_quick_pathology,
+                            colormap="turbo",
+                            alpha=0.45,
+                        )
+                        st.caption(
+                            f"**Confidence:** `{quick_res['pathology_probability']:.1%}` &nbsp;|&nbsp; "
+                            f"**Frontal Peak:** `{quick_res['frontal_anatomical_zone']}` &nbsp;|&nbsp; "
+                            f"**Lateral Peak:** `{quick_res['lateral_anatomical_zone']}`"
+                        )
+                        c_ov1, c_ov2 = st.columns(2)
+                        with c_ov1:
+                            if quick_res.get("frontal_overlay_bgr") is not None:
+                                f_rgb = cv2.cvtColor(quick_res["frontal_overlay_bgr"], cv2.COLOR_BGR2RGB)
+                                st.image(f_rgb, caption=f"Frontal Grad-CAM: {gc_quick_pathology}", use_container_width=True)
+                        with c_ov2:
+                            if quick_res.get("lateral_overlay_bgr") is not None:
+                                l_rgb = cv2.cvtColor(quick_res["lateral_overlay_bgr"], cv2.COLOR_BGR2RGB)
+                                st.image(l_rgb, caption=f"Lateral Grad-CAM: {gc_quick_pathology}", use_container_width=True)
+                    except Exception as e:
+                        st.info(f"Grad-CAM overlay available for pre-cached benchmark studies: {e}")
+
             st.write("")
             st.markdown("---")
 
@@ -541,7 +594,102 @@ def main():
                 st.dataframe(audit_df, use_container_width=True, hide_index=True)
 
     # =========================================================================
-    # TAB 2: STUDY GALLERY
+    # TAB 2: GRAD-CAM VISUAL EXPLAINABILITY
+    # =========================================================================
+    with tab_gradcam:
+        st.markdown("### 🔥 Dual-View Grad-CAM Visual Saliency & Anatomical Localization")
+        st.markdown(
+            "Grad-CAM (Gradient-weighted Class Activation Mapping) computes the exact spatial contribution "
+            "of the frozen `microsoft/rad-dino` visual tokens towards each of the 14 CheXpert clinical findings."
+        )
+
+        col_gc_ctrl, col_gc_view = st.columns([1, 2], gap="large")
+
+        with col_gc_ctrl:
+            st.markdown("#### ⚙️ Explainability Controls")
+            test_uids = [s["uid"] for s in test_studies[:40] if s["uid"] not in showcase_uids]
+            all_gc_uids = list(showcase_uids.keys()) + test_uids
+
+            gc_uid_choice = st.selectbox(
+                "Select Patient Study:",
+                all_gc_uids,
+                format_func=lambda x: showcase_uids.get(x, f"Study UID {x}"),
+                key="gc_uid_select",
+            )
+
+            gc_pathology = st.selectbox(
+                "Target Pathology Finding:",
+                LABELS_14,
+                index=1,
+                key="gc_pathology_select",
+            )
+
+            gc_cmap = st.selectbox(
+                "Heatmap Colormap:",
+                ["turbo", "jet", "inferno", "viridis", "magma"],
+                index=0,
+                key="gc_cmap_select",
+            )
+
+            gc_alpha = st.slider(
+                "Heatmap Blend Opacity (Alpha):",
+                min_value=0.10,
+                max_value=0.90,
+                value=0.45,
+                step=0.05,
+                key="gc_alpha_slider",
+            )
+
+            st.caption(
+                "💡 **How it works:** Each radiograph view has 144 spatial tokens (12×12 grid). "
+                "Closed-form projection of the classifier weights yields the exact directional gradients, "
+                "which are smoothly interpolated to the original 2048×2048 radiograph resolution."
+            )
+
+        with col_gc_view:
+            explainer = load_gradcam_explainer()
+            if explainer:
+                try:
+                    gc_res = explainer.explain(
+                        uid=gc_uid_choice,
+                        pathology=gc_pathology,
+                        colormap=gc_cmap,
+                        alpha=gc_alpha,
+                    )
+
+                    st.markdown(f"""
+                    <div class='glass-card' style='padding: 14px 20px; margin-bottom: 16px;'>
+                        <div style='display: flex; justify-content: space-between; align-items: center;'>
+                            <div>
+                                <span style='font-size: 11px; text-transform: uppercase; color: #8b949e; font-weight: 700;'>Selected Pathology</span>
+                                <div style='font-size: 18px; font-weight: 700; color: #58a6ff;'>{gc_res["target_pathology"]}</div>
+                            </div>
+                            <div>
+                                <span style='font-size: 11px; text-transform: uppercase; color: #8b949e; font-weight: 700;'>Model Confidence</span>
+                                <div style='font-size: 18px; font-weight: 700; color: #3fb950;'>{gc_res["pathology_probability"]:.1%}</div>
+                            </div>
+                            <div>
+                                <span style='font-size: 11px; text-transform: uppercase; color: #8b949e; font-weight: 700;'>Frontal Focus</span>
+                                <div style='font-size: 14px; font-weight: 600; color: #e6edf3;'>{gc_res["frontal_anatomical_zone"]}</div>
+                            </div>
+                            <div>
+                                <span style='font-size: 11px; text-transform: uppercase; color: #8b949e; font-weight: 700;'>Lateral Focus</span>
+                                <div style='font-size: 14px; font-weight: 600; color: #e6edf3;'>{gc_res["lateral_anatomical_zone"]}</div>
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    comp_img = explainer.render_composite_visualization(gc_res)
+                    st.image(comp_img, caption=f"Dual-View Grad-CAM Localization for {gc_pathology} (UID {gc_uid_choice})", use_container_width=True)
+
+                except Exception as e:
+                    st.error(f"Error computing Grad-CAM: {e}")
+            else:
+                st.warning("GradCAM Explainer not available.")
+
+    # =========================================================================
+    # TAB 3: STUDY GALLERY
     # =========================================================================
     with tab_gallery:
         st.markdown("### 📚 Test Study Gallery")

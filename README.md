@@ -117,16 +117,41 @@ graph TD
 
 ---
 
-## 4. Why Clinical Cross-Checking Replaces Grad-CAM
+## 4. Dual Explainability: Grad-CAM Saliency Maps & Clinical Cross-Checking
 
-In conventional academic computer vision, **Grad-CAM** (Gradient-weighted Class Activation Mapping) is often used to visualize saliency heatmaps. However, in our clinical diagnostic framework, Grad-CAM was intentionally **omitted** in favor of the **Clinical Cross-Checking Module** (`src/cross_check.py`):
+Our framework bridges the gap between **spatial visual explainability** (where the vision model looks) and **clinical linguistic factuality** (what the report asserts):
 
-| Comparison Dimension | Traditional Grad-CAM Saliency | Our Clinical Cross-Checking Engine |
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                                DUAL EXPLAINABILITY SUITE                               │
+│                                                                                        │
+│   [1] SPATIAL VISUAL EXPLAINABILITY (Grad-CAM)                                         │
+│       • Computes directional gradients of 14 CheXpert logits w.r.t. 144 spatial tokens │
+│       • Generates full-resolution bicubic heatmap overlays (Frontal + Lateral)        │
+│       • Infers peak anatomical zones (e.g., Cardiac Apex, Hilar, Retrosternal Space)   │
+│                                                                                        │
+│   [2] LINGUISTIC FACTUALITY AUDITING (Clinical Cross-Checker)                          │
+│       • Omission Audit: High classifier prob (>=40%) missing in text -> FLAGGED        │
+│       • Hallucination Audit: Low classifier prob (<15%) claimed in text -> FLAGGED     │
+│       • Concordance Score (0-100%) and automatic certified Checked Report              │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+| Dimension | Spatial Grad-CAM (`src/gradcam.py`) | Clinical Cross-Checking (`src/cross_check.py`) |
 |:---|:---|:---|
-| **Memory Footprint** | Requires keeping the 86M ViT backbone in VRAM and executing backward passes ($\frac{\partial y_c}{\partial A}$), causing **CUDA Out-Of-Memory (OOM)** on 6 GB consumer GPUs. | **Zero VRAM overhead**. Runs instantaneously in Python on precomputed classifier logits and text strings. |
-| **Architecture Compatibility** | Designed for convolutional feature maps (CNNs). On Vision Transformers (ViTs), patch tokens require noisy heuristic approximations (attention rollout / Score-CAM). | Native to our decoupled design: probes the 1,536-dim multi-view representation directly against clinical taxonomy. |
-| **Clinical Value** | **Vague & Heuristic**: Produces coarse colored blobs over lung zones that cannot tell the radiologist *why* a diagnosis was made or whether the report is factual. | **Actionable & Exact**: Quantifies precise discrepancies between the vision classifier and generated text (e.g., *"Pleural Effusion probability is 87.4%, but the report failed to mention it"*). |
-| **Safety & Error Correction** | Passive visualization only; cannot correct erroneous or hallucinated reports. | **Active Safety Shield**: Detects omissions and hallucinations, assigns an exact 0–100% concordance score, and automatically appends a verified clinical addendum. |
+| **Role** | Visual Saliency & Anatomical Localization | Factuality Verification & Error Correction |
+| **Output** | High-res colored heatmap overlays (Frontal & Lateral) | 0–100% Concordance Score + Checked Verified Report |
+| **Mechanics** | Exact token-level directional projection onto 12×12 grid | Radiology-specific negation & assertion regex parsing |
+| **Safety Action** | Shows *where* the model detected pathological patterns | Amends draft reports with clinical warnings for radiologists |
+
+### CLI Grad-CAM Generation:
+```bash
+# Generate high-resolution Grad-CAM composite for any study UID and pathology:
+python src/gradcam.py --uid 3039 --pathology Cardiomegaly --out outputs/gradcam_3039_cardiomegaly.png
+
+# Generate for study 2465 using Turbo colormap:
+python src/gradcam.py --uid 2465 --pathology Cardiomegaly --colormap turbo --alpha 0.45
+```
 
 ### How Clinical Cross-Checking Works:
 1. **Negation & Affirmation Parsing**: Parses radiology-specific sentence structures using context-aware regex (e.g., distinguishing *"no evidence of pneumothorax"* vs. *"small right apical pneumothorax"*).
@@ -295,6 +320,7 @@ capstone/
 │   ├── generate_mbr.py                # MBR consensus decoding & pycocoevalcap scoring
 │   ├── evaluate.py                    # Official pycocoevalcap scorer & cross-check evaluator
 │   ├── cross_check.py                 # Clinical Cross-Checking Engine & factuality verifier
+│   ├── gradcam.py                     # Dual-View Grad-CAM Visual Explainability Engine
 │   ├── image_validator.py             # Anatomical triage gate (X-Ray & Chest X-Ray validator)
 │   ├── download_model.py              # Resumable base LLM downloader with offline support
 │   └── create_colab_notebook.py       # Notebook generator

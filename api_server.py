@@ -4,6 +4,8 @@ Serves real-time inference data, radiograph images, 14-disease probabilities,
 and live clinical cross-checking to the modern frontend.
 """
 
+import base64
+import io
 import json
 import os
 import sys
@@ -19,6 +21,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
 from src.cross_check import ClinicalCrossChecker, cross_check_report, clean_and_refine_report, LABELS_14
 from src.image_validator import validate_image_triage
+from src.gradcam import GradCAMExplainer
 
 app = FastAPI(
     title="Dual-View RAG-VLM Clinical API",
@@ -289,6 +292,54 @@ def execute_custom_crosscheck(req: CrossCheckRequest):
     """Performs live clinical cross-check on any user-provided text and probabilities."""
     res = cross_check_report(req.report_text, req.probabilities)
     return res
+
+
+_GRADCAM_EXPLAINER: Optional[GradCAMExplainer] = None
+
+def get_gradcam_explainer() -> GradCAMExplainer:
+    global _GRADCAM_EXPLAINER
+    if _GRADCAM_EXPLAINER is None:
+        _GRADCAM_EXPLAINER = GradCAMExplainer()
+    return _GRADCAM_EXPLAINER
+
+
+@app.get("/api/gradcam/{uid}")
+def get_study_gradcam(
+    uid: str,
+    pathology: Optional[str] = None,
+    colormap: str = "turbo",
+    alpha: float = 0.45,
+):
+    """
+    Computes Dual-View Grad-CAM heatmaps for a study UID and target pathology.
+    Returns localization coordinates, confidence probability, and composite base64 overlay.
+    """
+    explainer = get_gradcam_explainer()
+    try:
+        res = explainer.explain(
+            uid=uid,
+            pathology=pathology,
+            colormap=colormap,
+            alpha=alpha,
+        )
+        pil_img = explainer.render_composite_visualization(res)
+        buf = io.BytesIO()
+        pil_img.save(buf, format="JPEG", quality=88)
+        img_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+
+        return {
+            "uid": uid,
+            "pathology": res["target_pathology"],
+            "probability": res["pathology_probability"],
+            "frontal_peak": res["frontal_peak_coord"],
+            "lateral_peak": res["lateral_peak_coord"],
+            "frontal_zone": res["frontal_anatomical_zone"],
+            "lateral_zone": res["lateral_anatomical_zone"],
+            "composite_image_data": f"data:image/jpeg;base64,{img_b64}",
+            "colormap": colormap,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Grad-CAM generation failed: {str(e)}")
 
 
 class ValidateImageRequest(BaseModel):
