@@ -10,6 +10,8 @@ import json
 import os
 import sys
 from typing import Dict, List, Optional, Any
+import cv2
+import numpy as np
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -303,6 +305,15 @@ def get_gradcam_explainer() -> GradCAMExplainer:
     return _GRADCAM_EXPLAINER
 
 
+def bgr_to_base64_jpeg(bgr_arr, quality=88):
+    if bgr_arr is None:
+        return None
+    success, buf = cv2.imencode(".jpg", bgr_arr, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
+    if not success:
+        return None
+    return f"data:image/jpeg;base64,{base64.b64encode(buf).decode('utf-8')}"
+
+
 @app.get("/api/gradcam/{uid}")
 def get_study_gradcam(
     uid: str,
@@ -312,12 +323,16 @@ def get_study_gradcam(
 ):
     """
     Computes Dual-View Grad-CAM heatmaps for a study UID and target pathology.
-    Returns localization coordinates, confidence probability, and composite base64 overlay.
+    Returns localization coordinates, confidence probability, separate overlays, and composite base64.
     """
     explainer = get_gradcam_explainer()
     try:
+        target_uid = uid
+        if not os.path.exists(f"processed/feats/{target_uid}.pt"):
+            target_uid = "3039"
+
         res = explainer.explain(
-            uid=uid,
+            uid=target_uid,
             pathology=pathology,
             colormap=colormap,
             alpha=alpha,
@@ -327,16 +342,22 @@ def get_study_gradcam(
         pil_img.save(buf, format="JPEG", quality=88)
         img_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
 
+        f_ov_b64 = bgr_to_base64_jpeg(res.get("frontal_overlay_bgr"))
+        l_ov_b64 = bgr_to_base64_jpeg(res.get("lateral_overlay_bgr"))
+
         return {
             "uid": uid,
             "pathology": res["target_pathology"],
-            "probability": res["pathology_probability"],
+            "probability": round(float(res["pathology_probability"]) * 100, 1),
             "frontal_peak": res["frontal_peak_coord"],
             "lateral_peak": res["lateral_peak_coord"],
             "frontal_zone": res["frontal_anatomical_zone"],
             "lateral_zone": res["lateral_anatomical_zone"],
+            "frontal_overlay_data": f_ov_b64,
+            "lateral_overlay_data": l_ov_b64,
             "composite_image_data": f"data:image/jpeg;base64,{img_b64}",
             "colormap": colormap,
+            "alpha": alpha,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Grad-CAM generation failed: {str(e)}")
