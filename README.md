@@ -4,25 +4,47 @@
 [![PyTorch 2.6+](https://img.shields.io/badge/pytorch-2.6+-ee4c2c.svg)](https://pytorch.org/)
 [![Vision RAD-DINO](https://img.shields.io/badge/encoder-RAD--DINO%20(ViT--B%2F14)-success)](https://huggingface.co/microsoft/rad-dino)
 [![LLM Qwen2.5-3B](https://img.shields.io/badge/LLM-Qwen2.5--3B--Instruct%20(4--bit%20NF4)-blueviolet)](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct)
-[![Full-Stack React + FastAPI](https://img.shields.io/badge/Frontend-React%20%7C%20FastAPI%20%7C%20Streamlit-cyan)](#6-interactive-user-interfaces)
+[![Hallucination Detection](https://img.shields.io/badge/Cross--Checker-Automated%20Hallucination%20Detection-emerald)](#4-hallucination-detection--clinical-cross-checking-module)
+[![Grad-CAM](https://img.shields.io/badge/Grad--CAM-Dual--View%20Saliency-orange)](#5-dual-view-grad-cam-visual-explainability)
+[![Decoding MBR](https://img.shields.io/badge/Decoding-MBR%20Consensus%20(+48.6%25)-purple)](#1-published-sota-benchmarks-vs-empirical-results)
+[![Full-Stack React + FastAPI](https://img.shields.io/badge/Frontend-React%20%7C%20FastAPI%20%7C%20Streamlit-cyan)](#7-interactive-user-interfaces)
 [![Colab Ready](https://img.shields.io/badge/Google%20Colab-1--Click%20Runner-orange.svg)](notebooks/colab_runner.ipynb)
-[![Evaluation](https://img.shields.io/badge/metrics-pycocoevalcap%20(PTB)-brightgreen)](#)
 
-A clinical-grade, multimodal radiology report generation and diagnostic verification framework built for the **Indiana University Chest X-Ray (IU X-Ray)** dataset. Designed to operate strictly within consumer hardware constraints (a single **6.0 GB laptop GPU**, NVIDIA RTX 4050), the system integrates:
-1. **Dual-View Radiograph Ingestion** (Paired Frontal + Lateral projections).
-2. **Frozen Biomedical Foundation Vision Backbone** (`microsoft/rad-dino`, ViT-B/14, 518px native resolution).
-3. **14-Disease Auxiliary Classifier Probe** (Macro-AUC = **0.8135**, Pleural Effusion AUC = **0.9670**).
-4. **Leakage-Free Dynamic FAISS Case Retrieval** (Strict UID masking over $N=2,060$ training studies).
-5. **4-bit Quantized Multimodal LLM** (`Qwen2.5-3B-Instruct` via QLoRA).
-6. **Minimum Bayes Risk (MBR) Consensus Decoding** (+40% relative BLEU-1 boost over standard beam search).
-7. **Automated Clinical Cross-Checking Engine** (`src/cross_check.py` auditing omissions, hallucinations, and generating certified amended reports).
-8. **Anatomical Input Triage Gate** (`src/image_validator.py` rejecting non-radiographs or non-thoracic X-rays).
+A clinical-grade, multimodal radiology report generation and diagnostic verification framework built for the **Indiana University Chest X-Ray (IU X-Ray)** dataset. Designed to operate strictly within consumer hardware constraints (a single **6.0 GB laptop GPU**, NVIDIA RTX 4050 / GTX 1660 Ti, or free Google Colab T4), the system integrates:
+
+1. **Dual-View Radiograph Ingestion**: Paired Frontal (PA/AP) and Lateral projections processed simultaneously.
+2. **Frozen Biomedical Foundation Vision Backbone**: `microsoft/rad-dino` (ViT-B/14, 518px native resolution).
+3. **14-Disease Auxiliary Classifier Probe**: Multi-label disease predictor achieving **Macro-AUC = 0.8135** (Pleural Effusion AUC = **0.9670**, Pneumonia AUC = **0.9408**).
+4. **Leakage-Free Dynamic FAISS Case Retrieval**: Cosine similarity retrieval over $N=2,060$ training studies with strict query UID masking.
+5. **4-bit Quantized Multimodal LLM**: `Qwen2.5-3B-Instruct` fine-tuned via QLoRA with a 2-layer MLP projector.
+6. **Minimum Bayes Risk (MBR) Consensus Decoding**: Resolves beam search mode collapse, delivering **0.4053 BLEU-1** (+48.6% relative gain over standard beam search).
+7. **Automated Hallucination Detection & Cross-Checking Engine**: Audits report statements against independent visual classifier probabilities, flagging hallucinations and omissions to produce certified amended reports.
+8. **Dual-View Grad-CAM Spatial Explainability**: Closed-form gradient heatmaps at $2048 \times 2048$ resolution with peak anatomical zone localization and interactive opacity controls.
+9. **Anatomical Input Triage Gate**: Validates radiograph modality and thoracic anatomy, automatically rejecting non-X-rays and non-chest scans.
+
+---
+
+## Table of Contents
+- [1. Published SOTA Benchmarks vs. Empirical Results](#1-published-sota-benchmarks-vs-empirical-results)
+- [2. 14-Disease Auxiliary Clinical Classifier Probe](#2-14-disease-auxiliary-clinical-classifier-probe)
+- [3. End-to-End System Architecture](#3-end-to-end-system-architecture)
+- [4. Hallucination Detection & Clinical Cross-Checking Module](#4-hallucination-detection--clinical-cross-checking-module)
+- [5. Dual-View Grad-CAM Visual Explainability](#5-dual-view-grad-cam-visual-explainability)
+- [6. Input Anatomical Triage Gate](#6-input-anatomical-triage-gate)
+- [7. Interactive User Interfaces](#7-interactive-user-interfaces)
+  - [Interface A: Modern React + Vite Web UI](#interface-a-modern-react--vite-web-ui-frontend)
+  - [Interface B: Streamlit Clinical Workstation](#interface-b-streamlit-clinical-workstation-apppy)
+- [8. FastAPI Backend REST Endpoints](#8-fastapi-backend-rest-endpoints)
+- [9. Google Colab 1-Click Execution](#9-google-colab-1-click-execution)
+- [10. Local Reproduction & CLI Commands](#10-local-reproduction--cli-commands)
+- [11. Repository Structure](#11-repository-structure)
+- [12. Key Design Safeguards & Citations](#12-key-design-safeguards--citations)
 
 ---
 
 ## 1. Published SOTA Benchmarks vs. Empirical Results
 
-All evaluations are conducted on the locked test split ($N=589$) using official `pycocoevalcap` backed by Java 1.8 and Stanford CoreNLP PTBTokenizer with standard 60-word truncation.
+All evaluations are conducted on the official locked test split ($N=589$) using official `pycocoevalcap` backed by Java 1.8 and Stanford CoreNLP PTBTokenizer with standard 60-word clinical truncation.
 
 ### Benchmark Comparison Table
 
@@ -40,17 +62,21 @@ All evaluations are conducted on the locked test split ($N=589$) using official 
 | **Ours: MBR Consensus Decoding (N=50)** | **This Repo** | **0.4053** | **0.2546** | **0.1666** | **0.1024** | **0.1926** | **0.3124** | **0.3026** | **16 Candidates (4B + 12S)** |
 
 ### Critical Empirical Findings:
-- **The Empirical Baseline Hurdles (E0 & E1)**: By establishing the **E0 Constant Normal Floor** (repeating "the lungs are clear...") and **E1 Pure Retrieval Hurdle** (copying the nearest training neighbor without generating a single token, scoring **0.3449 BLEU-1**), we uncovered that many published models score *below* trivial retrieval. E1 serves as the true sanity threshold for any generative model.
-- **Beam Search Mode Collapse**: Standard 4-beam search greedily maximizes joint likelihood ($\arg\max \sum \log P(w_t)$). Because ~70% of clinical tokens represent normalcy, beam search heavily penalizes rare pathology tokens and collapses into safe generic templates (**0.2728 BLEU-1**—falling *below* the retrieval hurdle!).
-- **MBR Consensus Power**: Minimum Bayes Risk (MBR) consensus over 16 diverse candidates (4 beams + 12 stochastic samples at $T=0.7$) selects the medoid maximizing pairwise clinical utility:
-  $$\hat{c} = \arg\max_{c_i \in \mathcal{C}} \frac{1}{|\mathcal{C}|} \sum_{c_j \in \mathcal{C}} \left( 0.6 \cdot \text{ROUGE-L}(c_i, c_j) + 0.4 \cdot \text{F1}_{\text{ngram}}(c_i, c_j) \right)$$
-  This consensus filter eliminates stochastic hallucinations and recovers rare clinical findings, delivering a **+48.6% relative boost in BLEU-1** over beam search.
+1. **The Empirical Baseline Hurdles (E0 & E1)**:
+   - **E0 (Constant Normal Floor)**: Repeating the static clinical template (*"the lungs are clear..."*) scores **0.2390 BLEU-1**.
+   - **E1 (Pure Retrieval Hurdle)**: Copying the nearest training neighbor without generating a single token scores **0.3449 BLEU-1**. E1 exposes that many published models score *below* trivial retrieval, making E1 the true sanity threshold for any generative model.
+2. **Beam Search Mode Collapse**:
+   - Standard 4-beam search greedily maximizes sequence likelihood ($\arg\max \sum \log P(w_t)$). Because ~70% of clinical radiology sentences describe normal anatomy, beam search aggressively penalizes rare pathological tokens and collapses into safe generic templates (**0.2728 BLEU-1**—falling *below* the retrieval hurdle!).
+3. **MBR Consensus Power**:
+   - Minimum Bayes Risk (MBR) consensus over 16 diverse candidates (4 beams + 12 stochastic samples at temperature $T=0.7$) selects the medoid maximizing pairwise clinical utility:
+     $$\hat{c} = \arg\max_{c_i \in \mathcal{C}} \frac{1}{|\mathcal{C}|} \sum_{c_j \in \mathcal{C}} \left( 0.6 \cdot \text{ROUGE-L}(c_i, c_j) + 0.4 \cdot \text{F1}_{\text{ngram}}(c_i, c_j) \right)$$
+   - This consensus filter penalizes stochastic hallucinations and recovers rare clinical findings, delivering a **+48.6% relative boost in BLEU-1** over beam search.
 
 ---
 
-## 2. 14-Disease Auxiliary Clinical Probe
+## 2. 14-Disease Auxiliary Clinical Classifier Probe
 
-To inject clinical disease awareness into multimodal generation and cross-checking, our frozen `microsoft/rad-dino` embeddings (1,536-dimensional dual pooled vectors) are calibrated across 14 CheXpert/NIH findings:
+To ground multimodal generation and enable independent verification, frozen `microsoft/rad-dino` embeddings (1,536-dimensional dual pooled vectors) are calibrated across 14 standard CheXpert/NIH findings using a linear probe trained with BCE loss:
 
 | Pathology Finding | Probe ROC-AUC | Pathology Finding | Probe ROC-AUC |
 |:---|:---:|:---|:---:|
@@ -63,7 +89,7 @@ To inject clinical disease awareness into multimodal generation and cross-checki
 | **Lung Lesion** | **0.6931** | **Enlarged Cardiomediastinum** | **0.5000** |
 | **Overall Macro-AUC** | **0.8135** | | |
 
-*Leakage Prevention*: During model training, 5-fold Out-Of-Fold (OOF) cross-validation probabilities (`processed/train_oof_priors.json`) are injected into the LLM prompt. This ensures the generator learns to condition on realistic, noisy disease probabilities rather than overconfident memorized training labels.
+> **Leakage Prevention**: During model training, 5-fold Out-Of-Fold (OOF) cross-validation probabilities (`processed/train_oof_priors.json`) are injected into the LLM prompt. This ensures the generator learns to condition on realistic, noisy disease probabilities rather than overconfident memorized training labels.
 
 ---
 
@@ -72,10 +98,10 @@ To inject clinical disease awareness into multimodal generation and cross-checki
 ```mermaid
 graph TD
     subgraph Triage ["Stage 0: Input Anatomical Triage Gate (image_validator.py)"]
-        INP[Uploaded Radiographs] --> V_XRAY{Is Radiograph?}
-        V_XRAY -- No --> REJ1[Reject: Natural Photo / Document]
+        INP[Uploaded Dual Radiographs] --> V_XRAY{Is Radiograph?}
+        V_XRAY -- No --> REJ1[Reject: Natural Photo / Screenshot]
         V_XRAY -- Yes --> V_CHEST{Is Thoracic?}
-        V_CHEST -- No --> REJ2[Reject: Hand / Dental / Pelvis X-Ray]
+        V_CHEST -- No --> REJ2[Reject: Extremity / Pelvis / Dental]
         V_CHEST -- Yes --> VALID[Validated Frontal + Lateral Study]
     end
 
@@ -89,10 +115,10 @@ graph TD
 
     subgraph RAG_and_Probe ["Stage 2: Leakage-Free RAG & Clinical Classifier Probe"]
         PF & PL --> DUAL_GLOB["Dual Global Vector (1,536-dim)"]
-        DUAL_GLOB --> FAISS["FAISS IndexFlatIP (Cosine)\n(2,060 Train Cases, Query UID Excluded)"]
+        DUAL_GLOB --> FAISS["FAISS IndexFlatIP (Cosine)\n(2,060 Train Cases, Query UID Masked)"]
         FAISS --> SIM["Top-2 Retrieved Exemplars"]
-        DUAL_GLOB --> PROBE["14-Disease Auxiliary Classifier Head\n(BCE Loss, weight=0.2, Macro-AUC=0.8135)"]
-        PROBE --> PRIORS["Clinical Probabilities (Priors)"]
+        DUAL_GLOB --> PROBE["14-Disease Auxiliary Classifier Head\n(Macro-AUC = 0.8135)"]
+        PROBE --> PRIORS["Visual Disease Probabilities"]
     end
 
     subgraph Generation ["Stage 3: Multimodal LLM & Consensus Decoding"]
@@ -100,118 +126,198 @@ graph TD
         PROJ --> FUSE["288 Visual Tokens"]
         PRIORS & SIM --> PROMPT["ChatML Clinical Prompt"]
         FUSE & PROMPT --> QWEN["Qwen2.5-3B-Instruct (4-bit NF4 QLoRA)"]
-        QWEN --> POOL["16 Diverse Candidates (4 Beams + 12 Stochastic)"]
+        QWEN --> POOL["16 Candidates (4 Beams + 12 Stochastic)"]
         POOL --> MBR["Minimum Bayes Risk Medoid Selection"]
-        MBR --> DRAFT["Unchecked Report (Draft)"]
+        MBR --> DRAFT["Unverified Draft Report"]
     end
 
-    subgraph Verification ["Stage 4: Clinical Cross-Checking Engine (cross_check.py)"]
-        DRAFT & PRIORS --> ENGINE["Clinical Cross-Checking Engine"]
-        ENGINE --> AUDIT["Omission Audit (Prob >= 40% absent?)\nHallucination Audit (Prob < 15% asserted?)\nConcordance Scoring (0 - 100%)"]
+    subgraph Verification ["Stage 4: Hallucination Detection & Cross-Checking Engine"]
+        DRAFT & PRIORS --> ENGINE["Clinical Cross-Checking Engine (cross_check.py)"]
+        ENGINE --> AUDIT["Hallucination Audit: Claimed but Prob < 15%?\nOmission Audit: Prob >= 40% but Missing?\nConcordance Scoring: 0 - 100%"]
         AUDIT --> STATUS{Concordant?}
         STATUS -- Yes --> PASS["Verified Concordant Report"]
-        STATUS -- No --> AMEND["Generate Clinical Amendment Addendum"]
-        PASS & AMEND --> FINAL["Final Certified Checked Report"]
+        STATUS -- No --> AMEND["Generate Certified Amendment Addendum"]
+        PASS & AMEND --> FINAL["Final Verified Clinical Report"]
+    end
+
+    subgraph Explainability ["Stage 5: Dual-View Grad-CAM Saliency Engine"]
+        PROBE & PF & PL --> GC_ENG["Grad-CAM Token Gradient Engine (gradcam.py)"]
+        GC_ENG --> BICUBIC["Bicubic Upsampling to 2048x2048 Overlays"]
+        GC_ENG --> ZONES["Anatomical Landmark Inference\n(Cardiac, Retrocardiac, Hilar, Apical)"]
+        BICUBIC & ZONES --> GC_UI["Interactive UI Panel & Opacity Slider"]
     end
 ```
 
 ---
 
-## 4. Dual Explainability: Grad-CAM Saliency Maps & Clinical Cross-Checking
+## 4. Hallucination Detection & Clinical Cross-Checking Module
 
-Our framework bridges the gap between **spatial visual explainability** (where the vision model looks) and **clinical linguistic factuality** (what the report asserts):
+### Why Hallucination Detection is Necessary:
+Large Multimodal Models frequently suffer from two critical failure modes when generating medical reports:
+1. **Hallucinations (False Positives)**: Asserting diseases that do not exist (e.g., hallucinating *"small pneumothorax"* or *"cardiomegaly"* due to language prior bias).
+2. **Omissions (False Negatives)**: Overlooking real, life-threatening pathologies that are visually prominent on the scan.
+
+### How the Module Works (`src/cross_check.py`):
+Our platform implements an independent, dual-stage clinical verification engine:
 
 ```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                                DUAL EXPLAINABILITY SUITE                               │
-│                                                                                        │
-│   [1] SPATIAL VISUAL EXPLAINABILITY (Grad-CAM)                                         │
-│       • Computes directional gradients of 14 CheXpert logits w.r.t. 144 spatial tokens │
-│       • Generates full-resolution bicubic heatmap overlays (Frontal + Lateral)        │
-│       • Infers peak anatomical zones (e.g., Cardiac Apex, Hilar, Retrosternal Space)   │
-│                                                                                        │
-│   [2] LINGUISTIC FACTUALITY AUDITING (Clinical Cross-Checker)                          │
-│       • Omission Audit: High classifier prob (>=40%) missing in text -> FLAGGED        │
-│       • Hallucination Audit: Low classifier prob (<15%) claimed in text -> FLAGGED     │
-│       • Concordance Score (0-100%) and automatic certified Checked Report              │
-└────────────────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│              AUTOMATED HALLUCINATION DETECTION & FACTUAL AUDITING                │
+│                                                                                  │
+│   [Stage 1: Context-Aware Clinical Entity Extraction]                            │
+│   • Parses radiology sentences with negation regex (e.g., distinguishes          │
+│     "no evidence of focal consolidation" from "focal consolidation noted").      │
+│                                                                                  │
+│   [Stage 2: Independent Visual Probability Cross-Referencing]                    │
+│   • Compares every asserted finding against the independent RAD-DINO classifier: │
+│     - Hallucination Threshold: Asserted finding has prob < 15% -> FLAGGED        │
+│     - Omission Threshold: Unmentioned finding has prob >= 40%   -> FLAGGED        │
+│                                                                                  │
+│   [Stage 3: Concordance Scoring & Certified Amendment]                           │
+│   • Computes continuous Concordance Score (0% to 100%).                          │
+│   • Automatically generates a Certified Amended Report:                          │
+│     - Removes hallucinated sentences from the narrative.                         │
+│     - Appends cautionary addenda for omitted high-risk findings.                 │
+└──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-| Dimension | Spatial Grad-CAM (`src/gradcam.py`) | Clinical Cross-Checking (`src/cross_check.py`) |
-|:---|:---|:---|
-| **Role** | Visual Saliency & Anatomical Localization | Factuality Verification & Error Correction |
-| **Output** | High-res colored heatmap overlays (Frontal & Lateral) | 0–100% Concordance Score + Checked Verified Report |
-| **Mechanics** | Exact token-level directional projection onto 12×12 grid | Radiology-specific negation & assertion regex parsing |
-| **Safety Action** | Shows *where* the model detected pathological patterns | Amends draft reports with clinical warnings for radiologists |
+#### Decision Boundary Rules:
+- **Hallucination Detection**:
+  $$\text{If } \text{Asserted}(d) = \text{True} \quad \text{AND} \quad P_{\text{classifier}}(d) < 0.15 \implies \mathbf{FLAG\_HALLUCINATION}$$
+  *Action*: Sentence is excised from the narrative, and an explicit clinical audit warning is displayed.
+- **Omission Detection**:
+  $$\text{If } P_{\text{classifier}}(d) \ge 0.40 \quad \text{AND} \quad \text{Asserted}(d) = \text{False} \implies \mathbf{FLAG\_OMISSION}$$
+  *Action*: An addendum is appended to alert the attending radiologist of the missed finding.
+- **Concordance Score**:
+  $$\text{Concordance} = \max\left(0\%,\, 100\% - 25\% \times N_{\text{hallucinations}} - 20\% \times N_{\text{omissions}}\right)$$
+
+---
+
+## 5. Dual-View Grad-CAM Visual Explainability
+
+To provide interpretability alongside factual text verification, the platform features a closed-form dual-view **Grad-CAM (Gradient-weighted Class Activation Mapping)** engine (`src/gradcam.py`).
+
+### Mathematical Formulation:
+For any target pathology $k \in \{1, \dots, 14\}$, the importance weight $\alpha_{m}^k$ for feature token $F_m$ ($m \in \{1, \dots, 144\}$) is computed via closed-form directional projection through the calibrated probe weights $W_k$:
+$$\alpha_{m}^k = \frac{\partial \text{logit}_k}{\partial F_m} = W_k[m]$$
+$$A^k(i, j) = \text{ReLU}\left( \sum_{m} \alpha_m^k \cdot F_m(i, j) \right)$$
+
+The resulting $12 \times 12$ activation map is normalized and upsampled to **$2048 \times 2048$** resolution using bicubic interpolation before alpha-blending onto the radiographic projection.
+
+### Key Capabilities:
+- **Dual-View Localization**: Computes paired heatmaps for both **Frontal** (PA/AP) and **Lateral** views simultaneously.
+- **Peak Anatomical Landmark Inference**: Automatically maps the highest-intensity activation coordinate to standard thoracic anatomical regions:
+  - *Frontal View*: `Cardiac Silhouette / Ventricular Apex`, `Right / Left Lower Lobe Basilar`, `Apical Pleural Margin`, `Hilar / Mediastinal Contour`, `Costophrenic Sulcus`.
+  - *Lateral View*: `Retrocardiac Space`, `Thoracic Spine / Vertebral Bodies`, `Anterior Retrosternal Clear Space`, `Diaphragmatic Cupola`.
+- **Interactive Controls**: Select from 6 scientific colormaps (`turbo`, `jet`, `inferno`, `viridis`, `magma`, `hot`) with an adjustable opacity slider ($0.10$ to $0.85$).
 
 ### CLI Grad-CAM Generation:
 ```bash
-# Generate high-resolution Grad-CAM composite for any study UID and pathology:
-python src/gradcam.py --uid 3039 --pathology Cardiomegaly --out outputs/gradcam_3039_cardiomegaly.png
+# Generate high-resolution Grad-CAM for Study 3039 (Cardiomegaly):
+python src/gradcam.py --uid 3039 --pathology Cardiomegaly --colormap jet --alpha 0.45 --out outputs/gradcam_3039.png
 
-# Generate for study 2465 using Turbo colormap:
-python src/gradcam.py --uid 2465 --pathology Cardiomegaly --colormap turbo --alpha 0.45
+# Generate for Study 2465 using Turbo colormap:
+python src/gradcam.py --uid 2465 --pathology "Pleural Effusion" --colormap turbo --alpha 0.50
 ```
 
-### How Clinical Cross-Checking Works:
-1. **Negation & Affirmation Parsing**: Parses radiology-specific sentence structures using context-aware regex (e.g., distinguishing *"no evidence of pneumothorax"* vs. *"small right apical pneumothorax"*).
-2. **Omission Check**: Flags whenever the RAD-DINO classifier outputs a high probability ($\ge 40\%$) for a pathology, but the generated draft omits or denies it.
-3. **Hallucination Check**: Flags whenever the draft asserts a finding as present, but the vision classifier probability is negligible ($< 15\%$).
-4. **Concordance Metric**: Computes a continuous alignment score from 0% to 100%. If discordant, the engine generates an authoritative **Checked Report** appending clinical warnings for the attending radiologist.
+---
+
+## 6. Input Anatomical Triage Gate
+
+To protect downstream clinical models against invalid or malicious uploads, `src/image_validator.py` executes a multi-stage validation check:
+
+1. **Modality Triage**: Evaluates dynamic range, grayscale pixel distribution, and frequency spectrum texture to differentiate medical radiographs from natural photographs, screenshots, memes, and documents.
+2. **Anatomical Triage**: Performs thoracic aspect-ratio, rib cage contour, and structural density checks (with local CLIP zero-shot verification) to confirm that the image is a **chest radiograph** (PA, AP, or Lateral) rather than dental, extremity (hand/wrist), skull, or pelvic films.
+3. **Projection Orientation Check**: Detects if the user uploaded the Lateral view into Slot 1 and Frontal into Slot 2, offering a 1-click swap action in the UI.
 
 ---
 
-## 5. Input Anatomical Triage Gate
+## 7. Interactive User Interfaces
 
-To protect clinical downstream generation against invalid uploads, `src/image_validator.py` executes a multi-stage validation check:
-1. **Modality Triage**: Evaluates dynamic range, grayscale distribution, and visual texture to distinguish medical radiographs from natural photos, memes, documents, and screenshots.
-2. **Anatomical Triage**: Performs thoracic aspect-ratio and structural density checks (with optional local CLIP zero-shot fallback) to verify that the radiograph is a **chest radiograph** (PA, AP, or Lateral) rather than dental, extremity (hand/wrist), skull, or pelvis films.
-3. If an invalid image is uploaded, the triage gate rejects it immediately with a friendly diagnostic alert before wasting compute on VLM generation.
+We provide **two** complete, dedicated user interfaces for clinical demonstration:
+
+### Interface A: Modern React + Vite Web UI (`frontend/`)
+
+A production-grade web application featuring a dark-mode glassmorphic interface, real-time image cropping, instant demo presets, and an interactive Grad-CAM side panel.
+
+```bash
+# Launch both backend (port 8000) and React frontend (port 3000) concurrently:
+python start_app.py
+```
+
+#### Key UI Features:
+1. **Three-Card Diagnostic Workflow**:
+   - **Card 1: Visual Classifier Probabilities**: Interactive risk badges and expandable 14-disease probability bars.
+   - **Card 2: Initial Report Draft**: Unverified narrative generated by the multimodal LLM.
+   - **Card 3: Hallucination Check & Verified Report**: Visual flags for hallucinations (red) and omissions (amber), 100% concordance indicators, and the final factual verified report with 1-click clipboard copy.
+2. **Right-Side Grad-CAM Button & Slide-Out Panel**:
+   - A dedicated **Grad-CAM** button in the wide right-hand workspace and in the header.
+   - Clicking opens the interactive **Grad-CAM Explainability** panel:
+     - **Heatmap Opacity Slider**: Adjust overlay blend smoothly between **10% (subtle)** and **85% (strong)** with real-time percentage feedback.
+     - **Pathology Selector**: Dropdown to inspect any of the 14 CheXpert pathologies.
+     - **Colormap Switches**: Toggle between Turbo, Jet, Inferno, and Viridis colormaps.
+     - **Raw Radiograph Toggle**: Easily switch between heatmap overlays and native radiographs.
+     - **Dual Frontal & Lateral Overlays**: Paired views with peak anatomical landmark badges.
+     - **Close Button `(X)`**: Collapses the panel back into the clean single-column view.
+3. **Instant Demo Presets**:
+   - Load pre-configured clinical cases with one click:
+     - **Study 3039**: Normal Chest (100% Concordant).
+     - **Study 2465**: Cardiomegaly & Bilateral Pleural Effusion.
+     - **Study 1014**: Left Lower Lobe Atelectasis & Opacity.
 
 ---
 
-## 6. Interactive User Interfaces
+### Interface B: Streamlit Clinical Workstation (`app.py`)
 
-We provide **two** dedicated graphical interfaces for interactive clinical demonstration:
+A fast, single-file clinical dashboard ideal for rapid local execution, demonstrations, and faculty reviews:
 
-### Interface A: Streamlit Clinical Workstation (`app.py`)
-A fast, single-file clinical dashboard ideal for quick demonstrations and faculty reviews:
 ```bash
 streamlit run app.py
 ```
-- Interactive dual-view radiograph uploader with live preview.
-- 14-disease pathology radar chart and probability bars.
-- Side-by-side comparison of **Unchecked Draft Report** vs. **Checked Verified Report**.
-- Interactive discrepancy chips (highlighting verified findings, omissions, and hallucinations).
-- Embedded architectural blueprint and baseline comparison charts.
 
-### Interface B: Full-Stack Clinical Platform (`frontend/` + `api_server.py`)
-A modern, production-grade web application featuring a high-performance **FastAPI backend** and a glassmorphic **React / Vite frontend**:
-```bash
-# Launch both backend (port 8000) and frontend (port 3000) concurrently:
-python start_app.py
-```
-- **Backend**: FastAPI REST API (`api_server.py`) with automatic CORS, OpenAPI docs at `http://127.0.0.1:8000/docs`, and endpoints for image validation, disease probing, report generation, and cross-checking.
-- **Frontend**: Vite + React single-page application (`frontend/`) featuring dark-mode glassmorphism, real-time image cropping, instant demo preset loading, and interactive clinical concordance telemetry.
+- Dual-view drag-and-drop radiograph uploader.
+- 14-disease pathology radar chart and probability breakdown.
+- Side-by-side comparison of **Draft Report** vs. **Checked Verified Report**.
+- Interactive discrepancy chips highlighting verified findings, omissions, and hallucinations.
+- Integrated Grad-CAM visualization tab.
 
 ---
 
-## 7. Google Colab 1-Click Execution
+## 8. FastAPI Backend REST Endpoints
 
-The entire training and evaluation workflow is packaged into [`notebooks/colab_runner.ipynb`](notebooks/colab_runner.ipynb) for 1-click execution on free Google Colab (T4 16GB, L4 24GB, or A100 40GB).
+The backend server (`api_server.py`) exposes high-performance REST endpoints with OpenAPI documentation at `http://127.0.0.1:8000/docs`:
+
+| Endpoint | Method | Description |
+|:---|:---:|:---|
+| `/api/health` | `GET` | Server health check and model loading status |
+| `/api/studies` | `GET` | List available IU X-Ray test studies with ground-truth metadata |
+| `/api/study/{uid}` | `GET` | Get full clinical study data, ground truth, priors, and image URLs |
+| `/api/image/{uid}/{view}` | `GET` | Serve raw PNG radiograph (`frontal` or `lateral`) |
+| `/api/gradcam/{uid}` | `GET` | **Compute dual-view Grad-CAM heatmaps** (query params: `pathology`, `colormap`, `alpha`) |
+| `/api/validate_image` | `POST` | Triage gate: validates image modality and thoracic anatomy |
+| `/api/process_radiographs` | `POST` | Full pipeline: validates images, extracts features, generates report, and audits |
+| `/api/crosscheck` | `POST` | Run hallucination & omission cross-check on arbitrary report + priors |
+| `/api/demo_samples` | `GET` | Fetch showcase preset studies (3039, 2465, 1014) |
+| `/api/benchmarks` | `GET` | Fetch published SOTA and empirical evaluation metrics |
+
+---
+
+## 9. Google Colab 1-Click Execution
+
+The entire training, caching, and evaluation pipeline is packaged into [`notebooks/colab_runner.ipynb`](notebooks/colab_runner.ipynb) for 1-click execution on free Google Colab (T4 16GB, L4 24GB, or A100 40GB).
 
 ### Option A: Via Google Drive (Recommended)
-1. Upload this repository folder (`capstone/`) to your Google Drive under `MyDrive/capstone`.
+1. Upload this repository folder (`capstone/`) to Google Drive under `MyDrive/capstone`.
 2. Open `notebooks/colab_runner.ipynb` in Google Colab.
 3. Set runtime to **GPU** (**Runtime -> Change runtime type -> T4 GPU**).
-4. Run cells in sequence:
-   - Cell 1 mounts Google Drive at `/content/drive/MyDrive/capstone`.
-   - Cell 2 installs dependencies and Java 1.8 for `pycocoevalcap`.
-   - Cell 3 prepares data and generates locked splits.
-   - Cell 4 computes the E0 normal report baseline.
-   - Cell 5 computes frozen RAD-DINO features and builds `train_faiss.index`.
-   - Cell 6 runs Stage 1 (Projector warmup) and Stage 2 (QLoRA SFT).
-   - Cell 7 executes MBR consensus decoding and computes official scores.
+4. Run cells sequentially:
+   - **Cell 1**: Mounts Google Drive at `/content/drive/MyDrive/capstone`.
+   - **Cell 2**: Installs dependencies and Java 1.8 for `pycocoevalcap`.
+   - **Cell 3**: Prepares data and generates locked splits.
+   - **Cell 4**: Computes E0 normal baseline.
+   - **Cell 5**: Computes frozen RAD-DINO features and builds `train_faiss.index`.
+   - **Cell 6**: Runs Stage 1 (Projector warmup) and Stage 2 (QLoRA SFT).
+   - **Cell 7**: Executes MBR consensus decoding and computes official scores.
 
 ### Option B: Via Direct Git Clone
 ```bash
@@ -222,7 +328,7 @@ The entire training and evaluation workflow is packaged into [`notebooks/colab_r
 
 ---
 
-## 8. Local Reproduction & CLI Commands
+## 10. Local Reproduction & CLI Commands
 
 ### 1. Environment Setup
 ```bash
@@ -236,7 +342,7 @@ venv\Scripts\activate          # On Windows (or source venv/bin/activate on Linu
 pip install -r requirements.txt
 ```
 
-### 2. Data Preparation & Cleaning
+### 2. Data Preparation & Regex Cleaning
 ```bash
 python src/prepare_data.py --data_dir data --out_dir processed
 ```
@@ -283,9 +389,14 @@ python src/evaluate.py \
   --out outputs/crosscheck_audit.json
 ```
 
+### 8. Grad-CAM Visualization Generation
+```bash
+python src/gradcam.py --uid 3039 --pathology Cardiomegaly --colormap jet --alpha 0.45 --out outputs/gradcam_3039.png
+```
+
 ---
 
-## 9. Repository Structure
+## 11. Repository Structure
 
 ```
 capstone/
@@ -307,6 +418,9 @@ capstone/
 │   ├── package.json                   # UI dependencies
 │   ├── vite.config.js                 # Vite build & proxy configuration
 │   └── src/                           # React components, styles, and telemetry charts
+│       ├── App.jsx                    # Core application layout, cards & Grad-CAM panel
+│       ├── App.css                    # Glassmorphic dark styling & responsive grid
+│       └── main.jsx                   # Entrypoint mounting
 │
 ├── notebooks/
 │   └── colab_runner.ipynb             # 1-click Google Colab runner notebook
@@ -317,9 +431,9 @@ capstone/
 │   ├── dataset.py                     # PyTorch Dataset, FAISS query exclusion, ChatML prompt
 │   ├── model.py                       # DualViewRAGVLM, 2-layer MLP projector, QLoRA module
 │   ├── train_sft.py                   # Two-stage training engine with fault-tolerant checkpoints
-│   ├── generate_mbr.py                # MBR consensus decoding & pycocoevalcap scoring
+│   ├── generate_mbr.py                # MBR consensus decoding & candidate generator
 │   ├── evaluate.py                    # Official pycocoevalcap scorer & cross-check evaluator
-│   ├── cross_check.py                 # Clinical Cross-Checking Engine & factuality verifier
+│   ├── cross_check.py                 # Clinical Hallucination Detection & Verification Engine
 │   ├── gradcam.py                     # Dual-View Grad-CAM Visual Explainability Engine
 │   ├── image_validator.py             # Anatomical triage gate (X-Ray & Chest X-Ray validator)
 │   ├── download_model.py              # Resumable base LLM downloader with offline support
@@ -347,8 +461,9 @@ capstone/
 
 ---
 
-## 10. Key Design Safeguards
+## 12. Key Design Safeguards & Citations
 
+### Design Safeguards:
 1. **Strict Dual-View Protocol**: Exactly $N=2,943$ studies possessing both frontal and lateral radiographs with verified findings. Split counts are strictly locked: 2,060 train / 294 val / 589 test.
 2. **Word-Preserving Regex Cleaning**: Replaces naive de-identification regexes (`re.sub(r'x+', '', text)` which mangles "pneumothorax" into "pneumothora") with word-boundary regex (`\bx{2,}\b`), preserving critical clinical pathology terms.
 3. **Strict Retrieval Leakage Guard**: Val and test queries are NEVER added to the FAISS index. During training, the query study's own UID is explicitly masked from candidate retrieval pools.
@@ -356,13 +471,11 @@ capstone/
 5. **Consumer VRAM Safety**: Dynamic auto-batching (batch size 2 with grad accumulation 8 on 16GB T4 GPUs, or batch size 1 with grad accumulation 16 on 6GB GPUs) + `expandable_segments:True` allocator prevents CUDA OOM; saves fault-tolerant checkpoints every 50 steps.
 6. **100% Offline Capability**: Resumable base LLM downloader with instant offline mode activation once cached.
 
----
-
-## 11. Citations & References
-
+### Citations:
 - **IU X-Ray**: Demner-Fushman, D., et al. "Preparing a collection of radiology examinations for distribution and retrieval." *JAMIA*, 2016.
 - **RAD-DINO**: Perez, P., et al. "RAD-DINO: Exploring Scalable Vision Pretraining for Radiography." *arXiv:2401.10819*, 2024.
 - **Qwen2.5**: Qwen Team. "Qwen2.5: A Party of Foundation Models." *arXiv:2409.12191*, 2024.
+- **Grad-CAM**: Selvaraju, R. R., et al. "Grad-CAM: Visual Explanations from Deep Networks via Gradient-based Localization." *ICCV*, 2017.
 - **DART**: "Dual-Alignment Radiography Transformer for Radiology Report Generation." *CVPR*, 2025.
 - **LePaX**: "Lesion-Guided Pathology-Aware Report Generation for Chest Radiographs." *ECCV*, 2026.
 - **pycocoevalcap**: Official MS COCO Caption Evaluation API with Stanford CoreNLP PTBTokenizer.
