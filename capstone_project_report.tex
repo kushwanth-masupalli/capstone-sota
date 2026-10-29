@@ -1,0 +1,556 @@
+\documentclass[12pt,a4paper]{report}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{setspace}
+\usepackage{cite}
+
+\onehalfspacing
+
+\begin{document}
+
+% ==============================================================================
+% TITLE PAGE
+% ==============================================================================
+\begin{titlepage}
+    \centering
+    \vspace*{0.5cm}
+    
+    {\Huge \textbf{VIT-AP UNIVERSITY}}\\[0.3cm]
+    {\large School of Computer Science and Engineering (SCOPE)}\\[1.5cm]
+    
+    {\Large \textbf{Capstone Project Report}}\\[1.2cm]
+    
+    {\LARGE \textbf{Dual-View RAG-VLM: Baseline Auditing, Classifier-Conditioned Generation, Spatial Grad-CAM, and Clinical Cross-Checking for Chest X-Ray Report Generation Under Consumer Hardware Constraints}}\\[1.5cm]
+    
+    \textbf{Submitted by}\\[0.4cm]
+    {\large
+    \begin{tabular}{c}
+        \textbf{Masupalli Kushwanth} \\
+        \textbf{Mandadi Pavan Sai} \\
+        \textbf{Bodicherla Naga Venkata Sai Eswar} \\
+        \textbf{Indugubilli Ephraim}
+    \end{tabular}
+    }\\[1.5cm]
+    
+    \textbf{Project Guide}\\[0.4cm]
+    {\large \textbf{Dr. Venkata Sivanarayana Gayyi}}\\[0.2cm]
+    Assistant Professor Senior Grade 1\\
+    School of Computer Science and Engineering (SCOPE)\\[1.5cm]
+    
+    VIT-AP University\\
+    Amaravati, Andhra Pradesh, India\\[0.5cm]
+    \textbf{2026--2027}
+\end{titlepage}
+
+% ==============================================================================
+% ABSTRACT
+% ==============================================================================
+\begin{abstract}
+Automated radiology report generation can help reduce diagnostic backlog and radiologist workload. However, reported progress on the Indiana University Chest X-Ray (IU X-Ray) benchmark is difficult to interpret, because reports are highly repetitive, published results are rarely calibrated against trivial baselines, and vision-language models often generate unchecked clinical hallucinations. This work presents \textbf{Dual-View RAG-VLM}, a parameter-efficient dual-projection vision-language framework trained and evaluated strictly on consumer-grade GPU hardware (NVIDIA RTX 4050, 6 GB VRAM). Frontal and lateral radiographs are encoded by a frozen RAD-DINO encoder ($518 \times 518$ native resolution). The 768-dimensional frontal and lateral vectors are concatenated into a 1,536-dimensional representation that feeds a multi-label classifier over 14 CheXpert findings (macro-AUC = 0.8135) and a FAISS index built strictly from training studies. Pooled visual tokens (288 per study), out-of-fold classifier probabilities, and two retrieved training reports are passed to Qwen2.5-3B-Instruct, which is adapted with 4-bit QLoRA within 4.9 GB VRAM. At inference, candidate reports are generated and the final report is selected by Minimum Bayes Risk (MBR) consensus decoding over 16 diverse candidates. 
+
+To bridge the gap between visual perception and clinical factuality, our platform introduces two complementary verification mechanisms: (i) an \textbf{Automated Clinical Cross-Checking Engine} that audits LLM draft statements against independent visual classifier probabilities, flagging hallucinations ($P < 0.15$) and omissions ($P \ge 0.40$) to synthesize a certified amended report with a continuous Concordance Score ($0$--$100\%$), and (ii) a closed-form \textbf{Dual-View Grad-CAM Engine} that computes pixel-aligned $2048 \times 2048$ bicubic heatmap overlays across Frontal and Lateral projections with automated peak anatomical landmark zoning. On the locked test set of 589 studies, a constant normal report (E0) reaches BLEU-1 of 0.2390 and ROUGE-L of 0.2809, and copying the top-1 retrieved training report (E1) reaches BLEU-1 of 0.3449. While standard beam search suffers from template mode collapse (BLEU-1 of 0.2728), MBR consensus decoding reaches BLEU-1 of 0.4053, METEOR of 0.1926, and ROUGE-L of 0.3124 (+48.6\% relative BLEU-1 gain over beam search). We also deploy a production full-stack web application (FastAPI + React with real-time Grad-CAM opacity sliders) and an anatomical input triage gate.
+
+\vspace{0.5cm}
+\noindent \textbf{Keywords:} Chest X-Ray, Radiology Report Generation, Dual-View Learning, RAD-DINO, Retrieval-Augmented Generation, Qwen2.5, QLoRA, Minimum Bayes Risk Decoding, Hallucination Detection, Clinical Cross-Checking, Grad-CAM, Baseline Auditing.
+\end{abstract}
+
+% ==============================================================================
+% CHAPTER 1: INTRODUCTION
+% ==============================================================================
+\chapter{Introduction}
+
+Chest X-ray imaging is one of the most widely used diagnostic imaging modalities in clinical practice. Radiologists examine multi-view radiographs, typically a frontal and a lateral projection, identify abnormalities, and summarize their observations in a textual report. The growing volume of imaging studies and the shortage of radiologists have increased interest in automatic radiology report generation, which could reduce reporting time and support clinical workflows by converting visual findings into structured clinical narratives \cite{chen2020generating, tanida2023interactive}.
+
+Recent research has explored knowledge-enhanced multimodal attention, self-supervised learning, Transformer-based architectures, contrastive learning, expert knowledge retrieval, cross-modal interaction, and reinforcement learning to improve automatic radiology report generation. Many of these systems report strong n-gram scores on the IU X-Ray collection \cite{demner2016preparing}; for example, DART and KiUT report BLEU-1 values of roughly 0.49--0.53 \cite{park2025dart, huang2023kiut}. However, these numbers need to be interpreted with care for four critical reasons:
+
+\begin{enumerate}
+    \item \textbf{Pre-training Confounding}: Many top-performing systems are pre-trained on large paired corpora such as MIMIC-CXR \cite{johnson2019mimic} using multi-GPU clusters before evaluation on IU X-Ray.
+    \item \textbf{Template Redundancy and Missing Baselines}: Routine chest radiographs are frequently normal, so reports share extensive wording. Standard n-gram metrics reward this repetition, yet few studies report how much score is achieved by a constant normal report or by simple nearest-neighbor retrieval.
+    \item \textbf{Hardware Accessibility}: Increasingly large multimodal models exclude academic laboratories and student researchers who do not have large compute budgets.
+    \item \textbf{Absence of Factuality Verification and Explainability}: Standard vision-language models decode reports autoregressively without verifying whether generated assertions are supported by independent visual evidence. Consequently, models frequently hallucinate non-existent pathologies or omit severe findings without spatial explainability.
+\end{enumerate}
+
+To address these issues, this work proposes the \textbf{Dual-View RAG-VLM} and evaluates it under a fixed, leakage-free protocol on consumer hardware. The frontal and lateral radiographs are encoded by a frozen RAD-DINO encoder. A logistic-regression classifier over the concatenated 1,536-dimensional representation provides out-of-fold probabilistic priors, a FAISS index restricted to training studies provides similar reports, and a two-layer MLP projector maps the visual tokens into the embedding space of Qwen2.5-3B-Instruct, which is adapted with 4-bit QLoRA. At inference, candidate reports are generated, the medoid is selected by MBR consensus decoding, and an independent cross-checking engine verifies factuality while Grad-CAM provides spatial visual grounding.
+
+The main contributions of this work are as follows:
+\begin{itemize}
+    \item \textbf{Empirical Baseline Floors}: A constant normal report (E0) and a pure top-1 retrieval baseline (E1) are evaluated on the exact test set ($N = 589$), establishing the minimum performance that a learned generator should exceed.
+    \item \textbf{Dual-View Multimodal Architecture}: Frozen RAD-DINO tokens pooled to 288 dual-view tokens, learned view embeddings, an auxiliary 14-disease finding classifier whose out-of-fold probabilities condition the prompt, train-only retrieval, and QLoRA fine-tuning of Qwen2.5-3B-Instruct, trainable within 4.9 GB of VRAM.
+    \item \textbf{Clinical Representation Check}: A linear probe over 14 CheXpert categories shows that the frozen dual-view features carry useful pathological signal (macro-AUC 0.8135, Pleural Effusion 0.9670, Pneumonia 0.9408).
+    \item \textbf{Consensus Decoding Optimization}: Beam search, stochastic sampling, and MBR consensus decoding are compared on the same model; MBR with 16 candidates substantially outperforms beam search on BLEU-1 (0.4053 vs 0.2728, a +48.6\% relative gain) and METEOR (0.1926 vs 0.1360).
+    \item \textbf{Automated Clinical Cross-Checking Engine}: An independent auditing layer that cross-references extracted clinical assertions against visual probe probabilities, flags hallucinations ($P < 0.15$) and omissions ($P \ge 0.40$), and generates certified amended reports with Concordance Scores ($0$--$100\%$).
+    \item \textbf{Dual-View Grad-CAM Spatial Explainability}: A closed-form token-level gradient engine generating $2048 \times 2048$ bicubic heatmaps across Frontal and Lateral projections with automated peak anatomical landmark zoning.
+    \item \textbf{Anatomical Input Triage Gate and Full-Stack Clinical Interfaces}: An automated triage gate that screens out non-chest scans, integrated with a FastAPI REST server and a glassmorphic React/Vite interface with live Grad-CAM opacity sliders.
+\end{itemize}
+
+% ==============================================================================
+% CHAPTER 2: LITERATURE REVIEW
+% ==============================================================================
+\chapter{Literature Review \& Table}
+
+Automatic radiology report generation has evolved from conventional image-to-text approaches toward multimodal systems that incorporate medical knowledge, attention mechanisms, contrastive learning, retrieval, and large vision-language models. Recent studies have primarily focused on improving the quality, relevance, and clinical content of automatically generated reports.
+
+Xu et al. (2023) proposed Radiology Report Generation via Structured Knowledge-Enhanced Multi-modal Attention and Contrastive Learning, which combines structured medical knowledge with multimodal attention and dual-branch contrastive learning \cite{xu2023radiology}. Although knowledge fusion improves report generation, the approach does not provide a dedicated mechanism for determining whether generated clinical claims are supported by the input image.
+
+Pan et al. (2024) introduced S3-Net, a self-supervised dual-stream network that combines CNN and Swin Transformer representations with a Fusion Alignment Module \cite{pan2024s3}. The approach improves visual representation and visual-text alignment, but its primary focus remains report generation rather than independent verification of generated findings.
+
+Yi et al. (2024) proposed the Two-Stage Global Enhanced Transformer (TSGET), which connects global image features with generated words and subsequently incorporates region-level visual information \cite{yi2024tsget}. While the model addresses global and regional visual representation, it primarily optimizes report-generation performance rather than detecting unsupported clinical statements.
+
+Liu et al. (2024) proposed Multi-Grained Radiology Report Generation with Sentence-Level Image-Language Contrastive Learning \cite{liu2024multi}. The method learns sentence-level topics and fine-grained image representations using contrastive learning. The study identifies challenges involving rare findings, subtle abnormalities, uncertainty, and complex reports.
+
+Zhang et al. (2024) developed a Visual-Textual Cross-Modal Interaction Network to address the problem of abnormal regions occupying only a small portion of chest X-ray images \cite{zhang2024visual}. The model improves visual-textual interaction but does not introduce a post-generation verification mechanism.
+
+Bu et al. (2024) proposed EKAGen, which incorporates instance-level expert knowledge, discriminative attention, and self-distillation for disease-specific representation \cite{bu2024ekagen}. It does not independently verify each generated claim against visual probabilities.
+
+Gu et al. (2024) introduced an Automatic Medical Report Generation approach based on a Detector Attention Module and GPT-Based Word LSTM \cite{gu2024automatic}. Lesion-location information assists generation, but unsupported statements are not explicitly detected.
+
+Hou et al. (2024) proposed Retrieval Enhanced Cross-modal Fusion for radiographic report generation \cite{hou2024retrieval}. Retrieval provides relevant context, but retrieval alone does not guarantee faithfulness to the current patient's scan.
+
+Liao et al. (2024) investigated Information Extraction to Normalize Training Data for Automatic Radiology Report Generation \cite{liao2024information}. They use clinical entity extraction to transform reports into structured forms, highlighting challenges in uncertain clinical observations.
+
+Yi et al. (2025) proposed LHR-RFL, a linear hybrid-reward-based reinforced focal learning approach that emphasizes difficult training cases \cite{yi2025lhr}. However, it does not incorporate an independent verification layer for hallucinated findings.
+
+\section{Literature Review Table}
+Table \ref{tab:lit_review} summarizes the ten reviewed studies, their contributions, and their limitations.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Summary of the Reviewed Literature}
+\label{tab:lit_review}
+\begin{tabularx}{\textwidth}{p{2.2cm}p{3cm}Xp{3.8cm}}
+\toprule
+\textbf{Paper / Year} & \textbf{Method} & \textbf{Key Contribution} & \textbf{Relevant Limitation} \\
+\midrule
+Xu et al. (2023) \cite{xu2023radiology} & Structured Knowledge Attention & Multimodal attention + dual contrastive learning & No mechanism for verifying clinical claims. \\
+Pan et al. (2024) \cite{pan2024s3} & S3-Net; Dual-Stream CNN/Swin & Fusion Alignment Module for visual-text alignment & Focuses on generation without factual auditing. \\
+Yi et al. (2024) \cite{yi2024tsget} & TSGET Transformer & Combines global image features with region info & Optimizes generation without detecting hallucinations. \\
+Liu et al. (2024) \cite{liu2024multi} & Sentence-Level Contrastive & Multi-grained topics and image representations & Struggles with rare abnormalities and complex reports. \\
+Zhang et al. (2024) \cite{zhang2024visual} & Cross-Modal Interaction & Enhances small abnormal region feature interaction & Lacks post-generation verification. \\
+Bu et al. (2024) \cite{bu2024ekagen} & EKAGen Expert Distillation & Instance-level expert knowledge & Does not independently audit generated findings. \\
+Gu et al. (2024) \cite{gu2024automatic} & Detector Attention Module & Lesion location from detector attention & Does not determine if claims are supported. \\
+Hou et al. (2024) \cite{hou2024retrieval} & Retrieval Cross-Modal Fusion & Case retrieval for contextual enrichment & Retrieval does not prevent hallucinations. \\
+Liao et al. (2024) \cite{liao2024information} & Entity Extraction Normalization & Transforms narrative reports into structured entities & Generalization across clinical sites remains limited. \\
+Yi et al. (2025) \cite{yi2025lhr} & LHR-RFL Reinforced Learning & Focuses on difficult cases via focal reward & No verification layer for hallucinated findings. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Research Gap}
+The reviewed literature demonstrates substantial progress in automatic chest X-ray report generation. However, existing approaches primarily concentrate on generation quality, reporting n-gram scores without calibrating them against trivial baselines. Furthermore, none of the existing methods combine: (i) rigorous benchmark auditing against constant and retrieval floors, (ii) dual-view visual modeling under consumer hardware limits, (iii) consensus-based medoid decoding to avoid template collapse, (iv) independent clinical cross-checking to detect hallucinations and omissions, and (v) pixel-aligned dual-view Grad-CAM explainability.
+
+% ==============================================================================
+% CHAPTER 3: PROBLEM STATEMENT AND OBJECTIVES
+% ==============================================================================
+\chapter{Problem Statement and Objectives}
+
+\section{Problem Statement}
+Automated chest X-ray report generation systems have demonstrated the ability to convert medical images into textual radiology reports. However, many systems use a single radiograph view, depend on image features without clinically grounded context, and select reports from a single beam-search pass that collapses to generic normal templates. Furthermore, standard language models frequently hallucinate non-existent pathologies or omit subtle visual findings, creating serious clinical safety risks. Because existing benchmarks lack calibrated baselines and post-generation verification tools, there is an urgent need for an open, verifiable dual-view framework that operates on consumer hardware, eliminates hallucinations through independent cross-checking, provides spatial Grad-CAM explainability, and evaluates against explicit empirical baselines.
+
+\section{Objectives}
+The primary objectives of this capstone research are:
+\begin{enumerate}
+    \item To build a dual-view (frontal and lateral) visual encoding pipeline using a frozen, radiology-specific RAD-DINO encoder with spatial pooling and learned view embeddings.
+    \item To train an auxiliary multi-label classifier over 14 CheXpert findings and use its out-of-fold probabilities as clinical priors during training and inference.
+    \item To incorporate leakage-free retrieval-augmented generation using a FAISS index restricted to the training split with query UID masking.
+    \item To adapt Qwen2.5-3B-Instruct using 4-bit NF4 quantization and LoRA (QLoRA) within the 6 GB VRAM envelope of a consumer GPU.
+    \item To implement Minimum Bayes Risk (MBR) consensus decoding over 16 diverse candidates to prevent beam search mode collapse.
+    \item To design and implement an automated post-generation \textbf{Clinical Cross-Checking Engine} that audits draft sentences against visual classifier probabilities, flags hallucinations ($P < 0.15$) and omissions ($P \ge 0.40$), and generates certified amended reports with Concordance Scores ($0$--$100\%$).
+    \item To formulate and implement a closed-form \textbf{Dual-View Grad-CAM Engine} providing $2048 \times 2048$ bicubic heatmaps and peak anatomical landmark inference.
+    \item To build an anatomical input triage gate and interactive full-stack deployment workstations (FastAPI, React glassmorphic UI, Streamlit).
+    \item To establish empirical baseline hurdles (E0 normal floor and E1 retrieval hurdle) and score all systems using the official Java \texttt{pycocoevalcap} toolkit.
+\end{enumerate}
+
+% ==============================================================================
+% CHAPTER 4: EXISTING AND PROPOSED SYSTEM
+% ==============================================================================
+\chapter{Existing System and Proposed System}
+
+\section{Existing System}
+Existing automated chest X-ray report generation systems follow a conventional image-to-text pipeline where a visual backbone extracts features and an autoregressive decoder generates text. Most models are pre-trained on MIMIC-CXR across multi-GPU server clusters and use greedy or beam search decoding.
+
+\section{Limitations of Existing Systems}
+\begin{itemize}
+    \item \textbf{Single-View Ingestion}: Ignoring the lateral view discards critical retrocardiac and vertebral diagnostic evidence.
+    \item \textbf{Uncalibrated Metrics}: High BLEU scores are reported without comparison to trivial constant-report or nearest-neighbor baselines.
+    \item \textbf{Template Mode Collapse}: Likelihood maximization in beam search heavily favors high-frequency normal phrasing over specific pathological findings.
+    \item \textbf{Unchecked Hallucinations}: Existing systems lack post-hoc verification to compare asserted sentences against independent visual disease evidence.
+    \item \textbf{Compute Inaccessibility}: Multi-billion parameter models cannot be trained or deployed by researchers with consumer hardware.
+\end{itemize}
+
+\section{Proposed System}
+The proposed \textbf{Dual-View RAG-VLM} system introduces five modular blocks:
+\begin{enumerate}
+    \item \textbf{Input Triage Block}: Validates image modality and thoracic anatomy, rejecting non-radiographs and non-chest films.
+    \item \textbf{Dual-View Encoder Block}: Frozen RAD-DINO encoder processes paired frontal and lateral views into 288 visual tokens with learned view embeddings, alongside a 1,536-dimensional global vector.
+    \item \textbf{Probe \& Retrieval Block}: 14-disease linear classifier predicts clinical probabilities; FAISS retrieves the two most similar training reports with strict query UID exclusion.
+    \item \textbf{LLM \& Consensus Block}: Qwen2.5-3B-Instruct (4-bit QLoRA) generates 16 candidates (4 beams + 12 samples); MBR consensus decoding selects the medoid report.
+    \item \textbf{Verification \& Explainability Block}: The Clinical Cross-Checking Engine audits hallucinations and omissions, while Dual-View Grad-CAM renders $2048 \times 2048$ heatmaps with anatomical landmark tags.
+\end{enumerate}
+
+% ==============================================================================
+% CHAPTER 5: DATA SET DESCRIPTION
+% ==============================================================================
+\chapter{Data Set Description}
+
+\section{IU Chest X-Ray Dataset}
+The framework is evaluated on the Indiana University Chest X-Ray (IU X-Ray) collection \cite{demner2016preparing}. The dataset contains 3,851 reports and 7,466 X-ray images linked via unique study identifiers (\texttt{uid}). Metadata is distributed across \texttt{indiana\_projections.csv} and \texttt{indiana\_reports.csv}.
+
+\section{Study Selection and Data Splits}
+Following a strict dual-view protocol, a study is retained only if it contains: (i) at least one frontal image, (ii) at least one lateral image, and (iii) non-empty findings. Single-view studies (174 cases) and empty findings records are eliminated, leaving 2,943 usable studies partitioned into \textbf{2,060 train}, \textbf{294 validation}, and \textbf{589 test} studies.
+
+\section{Text Preprocessing}
+References and outputs are lowercased and truncated to 60 words. Word-boundary regex substitution \texttt{re.sub(r'\textbackslash bx\{2,\}\textbackslash b', ' ', text)} removes de-identification placeholders while preserving clinical words such as ``pneumothorax''.
+
+\begin{table}[htbp]
+\centering
+\caption{Summary of Dataset Statistics and Protocol}
+\label{tab:dataset_stats}
+\begin{tabular}{ll}
+\toprule
+\textbf{Property} & \textbf{Value} \\
+\midrule
+Dataset & IU Chest X-Ray \\
+Raw Reports / Images & 3,851 / 7,466 \\
+Frontal / Lateral Images & 3,818 / 3,648 \\
+Single-View Studies Excluded & 174 \\
+Usable Dual-View Studies with Findings & 2,943 \\
+Training Studies & 2,060 \\
+Validation Studies & 294 \\
+Test Studies & 589 \\
+Auxiliary Finding Labels & 14 (CheXpert categories) \\
+Split Level & Study (\texttt{uid}) \\
+Maximum Report Length & 60 words \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ==============================================================================
+% CHAPTER 6: PROPOSED SYSTEM ARCHITECTURE
+% ==============================================================================
+\chapter{Proposed System Architecture}
+
+\section{Overall Architecture}
+The system receives paired Frontal and Lateral radiographs. After passing through the Input Anatomical Triage Gate, both views are encoded by a frozen RAD-DINO encoder ($518 \times 518$). The resulting patch grids are spatially pooled into 144 tokens per view (288 tokens total) with learned view embeddings. The mean-pooled features form a 1,536-dimensional vector that queries the FAISS index and feeds the 14-disease classifier probe. An MLP projector maps the visual tokens into Qwen2.5-3B-Instruct (adapted via 4-bit QLoRA). The model generates 16 candidates, and MBR consensus decoding selects the medoid hypothesis. Finally, the Clinical Cross-Checking Engine audits the report against classifier probabilities, while the Grad-CAM engine computes pixel-aligned dual-view heatmaps.
+
+\section{Architecture Components}
+\begin{itemize}
+    \item \textbf{Input Triage Gate}: Filters invalid images by dynamic range, grayscale histogram, and thoracic aspect ratio.
+    \item \textbf{Dual-View Encoder}: Frozen \texttt{microsoft/rad-dino} (ViT-B/14, 518px native resolution).
+    \item \textbf{Spatial Pooling \& View Embeddings}: Adaptive average pooling reduces $37 \times 37$ grids to $12 \times 12$ (144 tokens/view); learned embeddings preserve projection identity.
+    \item \textbf{Auxiliary Classifier Head}: 14-finding linear probe producing calibrated clinical probabilities.
+    \item \textbf{FAISS Retrieval Module}: Exact inner-product index over 2,060 training studies with query UID masking.
+    \item \textbf{MLP Projector}: 2-layer MLP with GELU mapping 768-dim encoder tokens to 2,048-dim LLM space.
+    \item \textbf{Language Model with QLoRA}: Qwen2.5-3B-Instruct adapted via 4-bit NF4 LoRA ($r=32, \alpha=64$).
+    \item \textbf{MBR Consensus Decoder}: Medoid selection over 16 candidates using ROUGE-L and n-gram F1 utility.
+    \item \textbf{Cross-Checking & Grad-CAM Suite}: Factual discrepancy auditor and $2048 \times 2048$ bicubic saliency visualizer.
+\end{itemize}
+
+% ==============================================================================
+% CHAPTER 7: TECHNOLOGIES USED
+% ==============================================================================
+\chapter{Technologies Used}
+
+Table \ref{tab:tech_stack} details the technologies employed across the framework.
+
+\begin{table}[htbp]
+\centering
+\caption{Technologies Used in the Proposed System}
+\label{tab:tech_stack}
+\begin{tabularx}{\textwidth}{p{3.5cm}X}
+\toprule
+\textbf{Category} & \textbf{Technology / Library} \\
+\midrule
+Programming Language & Python 3.11 \\
+Deep Learning & PyTorch 2.7.0 (CUDA 12.8), bfloat16 \\
+Vision Foundation Model & RAD-DINO (\texttt{microsoft/rad-dino}), ViT-B/14 \\
+Language Model & Qwen2.5-3B-Instruct \\
+Quantization & BitsAndBytes 4-bit NF4 with double quantization \\
+PEFT & LoRA ($r=32, \alpha=64$, dropout $0.10$) via Hugging Face PEFT \\
+Vector Retrieval & FAISS (\texttt{IndexFlatIP}, 1,536-dim inner-product) \\
+Decoding & Beam search, nucleus sampling, fast MBR consensus \\
+Evaluation & Java 1.8+, Stanford PTBTokenizer, \texttt{pycocoevalcap} \\
+Explainability & OpenCV, Bicubic Interpolation, SciPy, Matplotlib \\
+Web Backend & FastAPI, Uvicorn, RESTful API \\
+Frontend UI & React 18, Vite, Lucide-React, Glassmorphism CSS \\
+Workstation UI & Streamlit \\
+Hardware & NVIDIA GeForce RTX 4050 Laptop GPU (6 GB VRAM) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+% ==============================================================================
+% CHAPTER 8: METHODOLOGY
+% ==============================================================================
+\chapter{Methodology}
+
+\section{Dual-View Feature Extraction and Spatial Pooling}
+For frontal $\mathbf{I}_{\text{front}}$ and lateral $\mathbf{I}_{\text{lat}}$ radiographs, RAD-DINO outputs $37 \times 37 = 1,369$ tokens of dimension 768. Adaptive 2D pooling reduces each view to $12 \times 12 = 144$ tokens:
+\begin{equation}
+\text{Pool} : \mathbb{R}^{37 \times 37 \times 768} \longrightarrow \mathbb{R}^{12 \times 12 \times 768}
+\end{equation}
+Learned view embeddings $\mathbf{E}_{\text{front}}, \mathbf{E}_{\text{lat}} \in \mathbb{R}^{1 \times 144 \times 768}$ are added, and representations are concatenated:
+\begin{equation}
+\mathbf{Z}_{\text{vis}} = [\text{Pool}(\mathbf{H}_{\text{front}}) + \mathbf{E}_{\text{front}} \,;\, \text{Pool}(\mathbf{H}_{\text{lat}}) + \mathbf{E}_{\text{lat}}] \in \mathbb{R}^{1 \times 288 \times 768}
+\end{equation}
+
+\section{Image Classifier and Clinical Priors}
+The 1,536-dimensional global vector $\mathbf{g} = [\text{mean}(\mathbf{H}_{\text{front}}) \,;\, \text{mean}(\mathbf{H}_{\text{lat}})]$ feeds a multi-label probe predicting 14 CheXpert findings:
+\begin{equation}
+\hat{\mathbf{p}} = \sigma(\mathbf{W}_{\text{cls}}\mathbf{g} + \mathbf{b}_{\text{cls}}) \in [0, 1]^{14}
+\end{equation}
+During training, 5-fold out-of-fold probabilities are injected into prompts to prevent label memorization.
+
+\section{Multimodal Projector and Training Objective}
+A 2-layer MLP with GELU maps visual tokens to LLM hidden dimension $D_{\text{llm}} = 2048$:
+\begin{equation}
+\mathbf{V}_{\text{tokens}} = \mathbf{W}_2 \text{GELU}(\mathbf{W}_1 \mathbf{Z}_{\text{vis}} + \mathbf{b}_1) + \mathbf{b}_2
+\end{equation}
+Training combines report cross-entropy and auxiliary classification loss:
+\begin{equation}
+\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{CE}}(\mathbf{y}_{\text{tokens}}, \hat{\mathbf{y}}_{\text{tokens}}) + \lambda_{\text{cls}} \mathcal{L}_{\text{BCE}}(\mathbf{y}_{14}, \hat{\mathbf{p}}_{\text{head}}), \quad \lambda_{\text{cls}} = 0.20
+\end{equation}
+
+\section{Leakage-Free Dynamic Retrieval}
+For study $j$, the top-2 training exemplars are retrieved from the FAISS index with strict self-exclusion:
+\begin{equation}
+\mathcal{N}(j) = \text{Top-}2 \left( \left\{ i \in \mathcal{D}_{\text{train}} \setminus \{j\} \mid \langle \mathbf{g}_j, \mathbf{g}_i \rangle \right\} \right)
+\end{equation}
+
+\section{Two-Stage Training with QLoRA}
+Stage 1 (warm-up) optimizes the projector and classifier head. Stage 2 trains LoRA adapters ($r=32, \alpha=64$, 59.8M parameters) across all attention and MLP layers within 4.9 GB VRAM.
+
+\section{Candidate Generation and MBR Consensus Decoding}
+A pool $\mathcal{C} = \{\mathbf{y}_1, \dots, \mathbf{y}_N\}$ of $N = 16$ candidates (4 beams + 12 stochastic samples at $T=0.7, p=0.9$) is generated. The consensus medoid maximizes pairwise utility:
+\begin{equation}
+\mathbf{y}^*_{\text{MBR}} = \arg\max_{\mathbf{y}_i \in \mathcal{C}} \frac{1}{|\mathcal{C}| - 1} \sum_{j \neq i} \mathcal{U}(\mathbf{y}_i, \mathbf{y}_j)
+\end{equation}
+\begin{equation}
+\mathcal{U}(\mathbf{a}, \mathbf{b}) = 0.6 \cdot \text{ROUGE-L}_{\beta=1.2}(\mathbf{a}, \mathbf{b}) + 0.4 \cdot \left[ \frac{\text{F1}_{\text{uni}}(\mathbf{a}, \mathbf{b}) + \text{F1}_{\text{bi}}(\mathbf{a}, \mathbf{b})}{2} \right]
+\end{equation}
+
+\section{Automated Clinical Cross-Checking Engine}
+The draft $\mathbf{y}^*_{\text{MBR}}$ is audited by \texttt{src/cross\_check.py}:
+\begin{itemize}
+    \item \textbf{Hallucination Detection}: If $\text{Asserted}(d) = \text{True}$ and $P_{\text{probe}}(d) < 0.15 \implies$ Flag hallucination and excise sentence.
+    \item \textbf{Omission Detection}: If $P_{\text{probe}}(d) \ge 0.40$ and $\text{Asserted}(d) = \text{False} \implies$ Flag omission and append clinical warning.
+    \item \textbf{Concordance Score}:
+    \begin{equation}
+    \text{Concordance} = \max\left(0\%,\, 100\% - 25\% \times N_{\text{hallucinations}} - 20\% \times N_{\text{omissions}}\right)
+    \end{equation}
+\end{itemize}
+
+\section{Dual-View Grad-CAM Spatial Explainability}
+Closed-form token gradients through probe weights $W_k$ produce directional importance weights:
+\begin{equation}
+\alpha_m^k = \frac{\partial \text{logit}_k}{\partial F_m} = W_k[m], \qquad A^k(i, j) = \text{ReLU}\left( \sum_m \alpha_m^k \cdot F_m(i, j) \right)
+\end{equation}
+Maps are upsampled via bicubic interpolation to $2048 \times 2048$, and peak coordinates map to thoracic landmark zones (*Cardiac Silhouette, Retrocardiac Space, Hilar/Mediastinal, etc.*).
+
+% ==============================================================================
+% CHAPTER 9: ALGORITHM AND PSEUDO CODE
+% ==============================================================================
+\chapter{Algorithm / Pseudo Code}
+
+\begin{algorithm}[H]
+\caption{Dual-View RAG-VLM Report Generation and Verification Pipeline}
+\begin{algorithmic}[1]
+\Require Frontal image $I_f$, Lateral image $I_l$, Probe $W_{\text{cls}}$, FAISS index $\mathcal{I}_{\text{train}}$
+\Ensure Verified Clinical Report $R^*$, Grad-CAM Overlays $G_f, G_l$, Concordance Score $S$
+\State \textbf{Step 1: Anatomical Triage Gate}
+\If{$\neg \text{IsRadiograph}(I_f, I_l) \lor \neg \text{IsThoracic}(I_f, I_l)$}
+    \State \Return \textbf{Error}: Invalid non-chest radiograph input
+\EndIf
+\State \textbf{Step 2: Feature Encoding \& Retrieval}
+\State Extract frozen tokens $H_f, H_l \leftarrow \text{RAD-DINO}(I_f, I_l)$
+\State $Z_{\text{vis}} \leftarrow [\text{Pool}(H_f) + E_{\text{front}} \,;\, \text{Pool}(H_l) + E_{\text{lat}}]$
+\State $g \leftarrow [\text{mean}(H_f) \,;\, \text{mean}(H_l)]$
+\State $\hat{p} \leftarrow \sigma(W_{\text{cls}} g + b_{\text{cls}})$
+\State $E_1, E_2 \leftarrow \text{FAISS-Query}(\mathcal{I}_{\text{train}}, g, k=2)$
+\State \textbf{Step 3: MBR Consensus Generation}
+\State Prompt $\leftarrow \text{AssembleChatML}(Z_{\text{vis}}, \hat{p}, E_1, E_2)$
+\State $\mathcal{C} \leftarrow \text{GenerateCandidates}(\text{Qwen2.5-3B}, \text{Prompt}, N=16)$
+\State $R_{\text{draft}} \leftarrow \arg\max_{c_i \in \mathcal{C}} \frac{1}{|\mathcal{C}|-1}\sum_{j \neq i} \mathcal{U}(c_i, c_j)$
+\State \textbf{Step 4: Clinical Cross-Checking Audit}
+\State $\{H_{\text{flag}}\}, \{O_{\text{flag}}\}, S \leftarrow \text{AuditFindings}(R_{\text{draft}}, \hat{p})$
+\State $R^* \leftarrow \text{SynthesizeAmendedReport}(R_{\text{draft}}, \{H_{\text{flag}}\}, \{O_{\text{flag}}\})$
+\State \textbf{Step 5: Dual-View Grad-CAM Visualization}
+\State $G_f, G_l, \text{Zone}_f, \text{Zone}_l \leftarrow \text{ComputeGradCAM}(H_f, H_l, W_{\text{cls}}, \text{top\_pathology})$
+\State \Return $R^*, G_f, G_l, S, \text{Zone}_f, \text{Zone}_l$
+\end{algorithmic}
+\end{algorithm}
+
+% ==============================================================================
+% CHAPTER 10: EXPERIMENTAL SETUP AND RESULTS
+% ==============================================================================
+\chapter{Experimental Setup and Results}
+
+\section{Headline Benchmark Evaluation}
+Table \ref{tab:results_main} presents official evaluation scores across all 589 test studies.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Evaluation on IU X-Ray Test Set ($N = 589$)}
+\label{tab:results_main}
+\begin{tabularx}{\textwidth}{lXXXXXXX}
+\toprule
+\textbf{System} & \textbf{BLEU-1} & \textbf{BLEU-2} & \textbf{BLEU-3} & \textbf{BLEU-4} & \textbf{METEOR} & \textbf{ROUGE-L} & \textbf{CIDEr} \\
+\midrule
+E0 Constant Normal & 0.2390 & 0.1447 & 0.0932 & 0.0603 & 0.1455 & 0.2809 & 0.1855 \\
+E1 Pure Retrieval & 0.3449 & 0.2020 & 0.1299 & 0.0871 & 0.1514 & 0.2513 & 0.1970 \\
+Beam Search ($K=4$) & 0.2728 & 0.1676 & 0.1155 & 0.0821 & 0.1360 & 0.2648 & 0.2915 \\
+Stochastic Sampling & 0.3275 & 0.1980 & 0.1274 & 0.0840 & 0.1512 & 0.2753 & 0.2483 \\
+\textbf{MBR Consensus ($N=8$)} & 0.3820 & 0.2355 & 0.1525 & 0.0975 & 0.1816 & 0.2951 & 0.3240 \\
+\textbf{MBR Consensus ($N=16$)} & \textbf{0.4053} & \textbf{0.2546} & \textbf{0.1666} & \textbf{0.1024} & \textbf{0.1926} & \textbf{0.3124} & \textbf{0.3026} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Clinical Linear Probe Evaluation}
+Table \ref{tab:probe_auc} lists the ROC-AUC across 14 CheXpert categories.
+
+\begin{table}[htbp]
+\centering
+\caption{Diagnostic ROC-AUC for Dual-View RAD-DINO Probe}
+\label{tab:probe_auc}
+\begin{tabular}{lc|lc}
+\toprule
+\textbf{Clinical Finding} & \textbf{AUC} & \textbf{Clinical Finding} & \textbf{AUC} \\
+\midrule
+\textbf{Pleural Effusion} & \textbf{0.9670} & Support Devices & 0.8277 \\
+\textbf{Pneumonia} & \textbf{0.9408} & Edema & 0.8254 \\
+\textbf{Cardiomegaly} & \textbf{0.8936} & Lung Opacity & 0.8241 \\
+\textbf{Pneumothorax} & \textbf{0.8688} & Atelectasis & 0.7975 \\
+Consolidation & 0.8628 & Pleural Other & 0.7790 \\
+No Finding (Normal) & 0.8462 & Fracture & 0.7634 \\
+Lung Lesion & 0.6931 & Enlarged Cardiomediastinum & 0.5000 \\
+\midrule
+\multicolumn{2}{l}{\textbf{Overall Macro-Average AUC}} & \multicolumn{2}{c}{\textbf{0.8135}} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Qualitative Analysis with Cross-Checking}
+\textbf{Case UID 418 (Cardiomegaly)}: Beam search hallucinated asbestos exposure due to language prior bias. MBR consensus eliminated the asbestos hallucination, but omitted cardiomegaly. The Clinical Cross-Checking Engine automatically flagged the omission ($P = 89.36\%$), generated a certified amendment warning, and adjusted the Concordance Score to 80\%.
+
+% ==============================================================================
+% CHAPTER 11: DISCUSSION AND LIMITATIONS
+% ==============================================================================
+\chapter{Discussion and Limitations}
+
+\section{Interpreting Benchmark Scores}
+Because trivial retrieval (E1) reaches BLEU-1 of 0.3449, n-gram metrics reflect template repetition rather than visual comprehension alone. Reporting baselines alongside learned models is indispensable for scientific integrity.
+
+\section{Dual Grounding: Spatial Saliency and Clinical Cross-Checking}
+By combining linguistic MBR consensus with post-generation clinical cross-checking and spatial Grad-CAM, the framework bridges text generation with factual visual verification.
+
+\section{Systems Feasibility}
+The entire pipeline trains with an effective batch size of 16 in 4,921 MB VRAM on an NVIDIA RTX 4050 laptop GPU, proving that clinical AI research does not require multi-GPU server clusters.
+
+\section{Limitations}
+\begin{itemize}
+    \item \textbf{Dataset Scale}: Evaluated on 2,943 studies without MIMIC-CXR pre-training.
+    \item \textbf{Inference Latency}: 16-candidate MBR requires $\approx 35$ seconds per study on a laptop GPU.
+\end{itemize}
+
+% ==============================================================================
+% CHAPTER 12: CONCLUSION AND FUTURE SCOPE
+% ==============================================================================
+\chapter{Conclusion and Future Scope}
+
+\section{Conclusion}
+This work presented Dual-View RAG-VLM, an open, reproducible multimodal framework for chest radiograph interpretation. We proved that beam search collapses to generic templates (BLEU-1 of 0.2728), while MBR consensus decoding reaches BLEU-1 of 0.4053 and METEOR of 0.1926 (+48.6\% relative gain). The platform incorporates an automated Clinical Cross-Checking Engine to eliminate hallucinations and a closed-form Dual-View Grad-CAM engine with $2048 \times 2048$ bicubic heatmaps.
+
+\section{Future Scope}
+\begin{enumerate}
+    \item \textbf{Multi-Center Pre-Training}: Pre-training on MIMIC-CXR and CheXpert to expand vocabulary.
+    \item \textbf{Speculative Decoding}: Using small draft models to accelerate MBR consensus to sub-second latency.
+    \item \textbf{Prospective Clinical Trials}: Conducting clinical reader studies with practicing radiologists.
+\end{enumerate}
+
+% ==============================================================================
+% REFERENCES
+% ==============================================================================
+\begin{thebibliography}{99}
+
+\bibitem{chen2020generating}
+Z.~Chen, Y.~Song, T.-H.~Chang, and X.~Wan, ``Generating Radiology Reports via Memory-driven Transformer,'' in \emph{Proc. EMNLP}, 2020.
+
+\bibitem{demner2016preparing}
+D.~Demner-Fushman et~al., ``Preparing a collection of radiology examinations for distribution and retrieval,'' \emph{J. Am. Med. Inform. Assoc.}, vol.~23, no.~2, pp.~304--310, 2016.
+
+\bibitem{johnson2019mimic}
+A.~E.~W.~Johnson et~al., ``MIMIC-CXR, a de-identified publicly available database of chest radiographs with free-text reports,'' \emph{Scientific Data}, vol.~6, art.~317, 2019.
+
+\bibitem{tanida2023interactive}
+T.~Tanida, P.~M{\"u}ller, G.~Kaissis, and D.~Rueckert, ``Interactive and Explainable Region-guided Radiology Report Generation,'' in \emph{Proc. CVPR}, 2023.
+
+\bibitem{park2025dart}
+S.-J.~Park et~al., ``DART: Disease-aware Image-Text Alignment and Self-correcting Re-alignment for Trustworthy Radiology Report Generation,'' in \emph{Proc. CVPR}, 2025.
+
+\bibitem{huang2023kiut}
+Z.~Huang, X.~Zhang, and S.~Zhang, ``KiUT: Knowledge-injected U-Transformer for Radiology Report Generation,'' in \emph{Proc. CVPR}, 2023.
+
+\bibitem{perez2024rad}
+F.~P{\'e}rez-Garc{\'i}a et~al., ``RAD-DINO: Exploring Scalable Vision Pretraining for Radiography,'' \emph{arXiv:2401.10815}, 2024.
+
+\bibitem{qwen2024technical}
+Qwen Team, ``Qwen2.5 Technical Report,'' \emph{arXiv:2412.15115}, 2024.
+
+\bibitem{dettmers2023qlora}
+T.~Dettmers, A.~Pagnoni, A.~Holtzman, and L.~Zettlemoyer, ``QLoRA: Efficient Fine-tuning of Quantized LLMs,'' in \emph{NeurIPS}, 2023.
+
+\bibitem{kumar2004minimum}
+S.~Kumar and W.~Byrne, ``Minimum Bayes-Risk Decoding for Statistical Machine Translation,'' in \emph{Proc. HLT-NAACL}, 2004.
+
+\bibitem{johnson2021billion}
+J.~Johnson, M.~Douze, and H.~J{\'e}gou, ``Billion-scale similarity search with GPUs,'' \emph{IEEE Trans. Big Data}, vol.~7, no.~3, pp.~535--547, 2021.
+
+\bibitem{irvin2019chexpert}
+J.~Irvin et~al., ``CheXpert: A Large Chest Radiograph Dataset with Uncertainty Labels and Expert Comparison,'' in \emph{Proc. AAAI}, 2019.
+
+\bibitem{selvaraju2017grad}
+R.~R.~Selvaraju et~al., ``Grad-CAM: Visual Explanations from Deep Networks via Gradient-based Localization,'' in \emph{Proc. ICCV}, 2017.
+
+\bibitem{xu2023radiology}
+D.~Xu et~al., ``Radiology Report Generation via Structured Knowledge-Enhanced Multi-modal Attention and Contrastive Learning,'' 2023.
+
+\bibitem{pan2024s3}
+S.~Pan et~al., ``S3-Net: Self-Supervised Dual-Stream Network for Radiology Report Generation,'' 2024.
+
+\bibitem{yi2024tsget}
+Y.~Yi et~al., ``TSGET: Two-Stage Global Enhanced Transformer for Automatic Radiology Report Generation,'' 2024.
+
+\bibitem{liu2024multi}
+L.~Liu et~al., ``Multi-Grained Radiology Report Generation with Sentence-Level Image-Language Contrastive Learning,'' 2024.
+
+\bibitem{zhang2024visual}
+Z.~Zhang et~al., ``Visual-Textual Cross-Modal Interaction Network for Radiology Report Generation,'' 2024.
+
+\bibitem{bu2024ekagen}
+B.~Bu et~al., ``EKAGen: Expert Knowledge-Aware Radiology Report Generation,'' 2024.
+
+\bibitem{gu2024automatic}
+G.~Gu et~al., ``Automatic Medical Report Generation Based on Detector Attention Module and GPT-Based Word LSTM,'' 2024.
+
+\bibitem{hou2024retrieval}
+H.~Hou et~al., ``Retrieval Enhanced Cross-modal Fusion for Radiographic Report Generation,'' 2024.
+
+\bibitem{liao2024information}
+L.~Liao et~al., ``Information Extraction to Normalize Training Data for Automatic Radiology Report Generation,'' 2024.
+
+\bibitem{yi2025lhr}
+Y.~Yi et~al., ``LHR-RFL: Linear Hybrid-Reward-Based Reinforced Focal Learning for Radiology Report Generation,'' 2025.
+
+\end{thebibliography}
+
+\end{document}
