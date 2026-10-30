@@ -21,7 +21,7 @@ from tqdm import tqdm
 
 sys.path.insert(0, os.path.dirname(__file__))
 from dataset import IUReportDataset, collate_fn
-from evaluate import coco_scores, fmt, mbr_select, truncate, utility
+from evaluate import coco_scores, fmt, mbr_select, truncate, utility, meteor_utility
 from model import DualViewRAGVLM
 from cross_check import cross_check_report
 
@@ -99,6 +99,7 @@ def run_inference(
     max_samples: Optional[int] = None,
     include_retrieval: bool = True,
     len_bonus: float = 0.15,
+    util: str = "meteor",
     out_json_path: str = "outputs/predictions.json",
 ) -> Dict:
     """
@@ -165,7 +166,8 @@ def run_inference(
                 max_new_tokens=max_new_tokens,
                 retrieved_candidates=ret_cands,
             )
-            selected_report = mbr_select(candidate_pool, util=utility, len_bonus=len_bonus)
+            util_fn = meteor_utility if util == "meteor" else utility
+            selected_report = mbr_select(candidate_pool, util=util_fn, len_bonus=len_bonus)
         else:
             raise ValueError(f"Unknown generation mode: {mode}")
 
@@ -223,6 +225,7 @@ def main():
     parser.add_argument("--n_candidates", type=int, default=16, help="Pool size for MBR")
     parser.add_argument("--include_retrieval", action="store_true", default=True, help="Include retrieved cases in MBR pool")
     parser.add_argument("--len_bonus", type=float, default=0.15, help="Length normalization bonus for MBR")
+    parser.add_argument("--util", choices=["f1", "meteor"], default="meteor", help="MBR selection utility (f1 composite or meteor recall-weighted)")
     parser.add_argument("--max_new_tokens", type=int, default=128)
     parser.add_argument("--max_samples", type=int, default=None, help="Limit number of samples for quick testing")
     parser.add_argument("--data_dir", default="processed")
@@ -277,6 +280,7 @@ def main():
         max_samples=args.max_samples,
         include_retrieval=args.include_retrieval,
         len_bonus=args.len_bonus,
+        util=args.util,
         out_json_path=args.out_json,
     )
 

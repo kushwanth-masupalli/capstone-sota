@@ -86,6 +86,21 @@ def utility(a: str, b: str, w_rouge=0.5, w_f1=0.5, order=4) -> float:
     return w_rouge * rouge_l_f1(a, b) + w_f1 * f1_val
 
 
+def meteor_utility(a: str, b: str, alpha: float = 0.85) -> float:
+    """Recall-weighted consensus utility directly prioritizing METEOR score (> 0.215)."""
+    aw = set(a.lower().split())
+    bw = set(b.lower().split())
+    if not aw or not bw:
+        return 0.0
+    common = len(aw & bw)
+    p = common / len(aw)
+    r = common / len(bw)
+    if p + r == 0:
+        return 0.0
+    f_mean = (p * r) / (alpha * p + (1.0 - alpha) * r)
+    return 0.70 * f_mean + 0.30 * rouge_l_f1(a, b)
+
+
 def mbr_select(cands, util=utility, len_bonus=0.15, target_len=30.0):
     """Return the candidate with the highest mean utility against the others, with optional length normalization."""
     n = len(cands)

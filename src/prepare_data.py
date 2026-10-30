@@ -47,7 +47,7 @@ WEAK_RULES = {
 }
 
 
-def clean_report(text) -> str:
+def clean_report(text, max_words: int = MAX_WORDS) -> str:
     """Lowercase, remove ONLY anonymization placeholders (XXXX), normalise spacing, cap length."""
     if text is None or (isinstance(text, float) and pd.isna(text)):
         return ""
@@ -56,7 +56,7 @@ def clean_report(text) -> str:
     t = re.sub(r"\s+", " ", t)
     t = re.sub(r"\s([.,;:])", r"\1", t)
     words = t.strip().split()
-    return " ".join(words[:MAX_WORDS])
+    return " ".join(words[:max_words])
 
 
 def weak_labels(mesh, problems):
@@ -98,6 +98,10 @@ def main():
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--include_single_view", action="store_true")
     ap.add_argument("--impression_fallback", action="store_true")
+    ap.add_argument("--include_impression", action="store_true",
+                    help="Concatenate findings and impression as target text (R2Gen/LLaMA-XR convention)")
+    ap.add_argument("--max_words", type=int, default=60,
+                    help="Maximum words per target report (default: 60)")
     ap.add_argument("--r2gen_annotation", default=None,
                     help="optional annotation.json to reuse R2Gen split ids exactly")
     args = ap.parse_args()
@@ -127,9 +131,15 @@ def main():
                 drops["no_lateral"] += 1
                 continue
             la = fr
-        text = clean_report(r["findings"])
-        if not text and args.impression_fallback:
-            text = clean_report(r["impression"])
+        text = clean_report(r["findings"], max_words=args.max_words)
+        if args.include_impression:
+            imp = clean_report(r["impression"], max_words=args.max_words)
+            if imp and text:
+                text = f"{text} {imp}".strip()
+            elif imp and not text:
+                text = imp
+        elif not text and args.impression_fallback:
+            text = clean_report(r["impression"], max_words=args.max_words)
         if not text:
             drops["empty_text"] += 1
             continue
