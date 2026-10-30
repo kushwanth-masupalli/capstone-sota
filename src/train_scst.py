@@ -266,7 +266,7 @@ def main():
                     )
 
                     # SCST loss: - advantage * log_prob (normalized by length)
-                    rl_loss = - advantage * (out["loss_report"] / args.grad_accum)
+                    rl_loss = - advantage * (out["loss_lm"] / args.grad_accum)
                     rl_loss.backward()
 
             total_steps += 1

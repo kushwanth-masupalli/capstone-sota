@@ -320,6 +320,12 @@ class DualViewRAGVLM(nn.Module):
         if attention_mask is None:
             attention_mask = torch.ones(prompt_ids.shape, dtype=torch.long, device=device)
 
+        # Enable KV caching during autoregressive generation for 10x faster inference
+        was_gc = getattr(self.llm, "is_gradient_checkpointing", False)
+        if was_gc and hasattr(self.llm, "gradient_checkpointing_disable"):
+            self.llm.gradient_checkpointing_disable()
+        self.llm.config.use_cache = True
+
         gen_outputs = self.llm.generate(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
@@ -334,7 +340,11 @@ class DualViewRAGVLM(nn.Module):
             num_return_sequences=num_return_sequences,
             pad_token_id=self.tokenizer.pad_token_id or self.tokenizer.eos_token_id,
             eos_token_id=self.tokenizer.eos_token_id,
+            use_cache=True,
         )
+
+        if was_gc and hasattr(self.llm, "gradient_checkpointing_enable"):
+            self.llm.gradient_checkpointing_enable()
 
         # Decode generated token IDs
         generated_texts = []
