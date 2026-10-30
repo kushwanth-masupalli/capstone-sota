@@ -238,7 +238,8 @@ Maps are upsampled via bicubic interpolation to $2048 \times 2048$, and peak coo
 | Dual-View RAG-VLM (Beam Search) | 0.2728 | 0.1676 | 0.1155 | 0.0821 | 0.1360 | 0.2648 | 0.2915 |
 | Dual-View RAG-VLM (Stochastic Sample) | 0.3275 | 0.1980 | 0.1274 | 0.0840 | 0.1512 | 0.2753 | 0.2483 |
 | **Dual-View RAG-VLM (MBR $N=8$)** | 0.3820 | 0.2355 | 0.1525 | 0.0975 | 0.1816 | 0.2951 | 0.3240 |
-| **Dual-View RAG-VLM (MBR $N=16$)** | **0.4053** | **0.2546** | **0.1666** | **0.1024** | **0.1926** | **0.3124** | **0.3026** |
+| **Dual-View RAG-VLM (Enhanced MBR $N=589$)** | **0.3897** | **0.2364** | **0.1548** | **0.1048** | **0.1694** | **0.2833** | **0.2386** |
+| **Dual-View RAG-VLM (Enhanced MBR Pilot $N=50$)** | **0.4081** | **0.2592** | **0.1775** | **0.1254** | **0.1872** | **0.3122** | **0.4396** |
 | DART / DATR (CVPR 2025) | 0.4860 | 0.3480 | 0.2650 | 0.2080 | 0.2050 | 0.4110 | — |
 | KiUT (CVPR 2023) | 0.5250 | — | — | 0.1850 | 0.2420 | 0.4090 | — |
 
@@ -300,3 +301,4 @@ We presented Dual-View RAG-VLM, an open, reproducible multimodal framework for c
 21. Johnson, J., et al. "Billion-scale similarity search with GPUs." *IEEE Trans. Big Data*, 2021.
 22. Irvin, J., et al. "CheXpert: A Large Chest Radiograph Dataset." *Proc. AAAI*, 2019.
 23. Selvaraju, R. R., et al. "Grad-CAM: Visual Explanations from Deep Networks." *Proc. ICCV*, 2017.
+

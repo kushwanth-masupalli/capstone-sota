@@ -246,8 +246,9 @@ Table 1 compiles our official test set scores ($N=589$) against our empirical fl
 | **E1 Pure Retrieval Top-1 Hurdle** | Baseline | 0.3449 | 0.2020 | 0.1299 | 0.0871 | 0.1514 | 0.2513 | 0.1970 |
 | **Dual-View RAG-VLM (Beam Search)** | Ours | 0.2728 | 0.1676 | 0.1155 | 0.0821 | 0.1360 | 0.2648 | 0.2915 |
 | **Dual-View RAG-VLM (Stochastic Sample)**| Ours | 0.3275 | 0.1980 | 0.1274 | 0.0840 | 0.1512 | 0.2753 | 0.2483 |
-| **Dual-View RAG-VLM (MBR Consensus $N=8$)**| **Ours** | **0.3820** | **0.2355** | **0.1525** | **0.0975** | **0.1816** | **0.2951** | **0.3240** |
-| **Dual-View RAG-VLM (MBR Consensus $N=16$, Pilot)**| **Ours** | **0.4053** | **0.2546** | **0.1666** | **0.1024** | **0.1926** | **0.3124** | **0.3026** |
+| **Dual-View RAG-VLM (MBR Consensus $N=8$)**| **Ours** | 0.3820 | 0.2355 | 0.1525 | 0.0975 | 0.1816 | 0.2951 | 0.3240 |
+| **Dual-View RAG-VLM (Enhanced MBR, $N=589$)**| **Ours** | **0.3897** | **0.2364** | **0.1548** | **0.1048** | **0.1694** | **0.2833** | **0.2386** |
+| **Dual-View RAG-VLM (Enhanced MBR Pilot, $N=50$)**| **Ours** | **0.4081** | **0.2592** | **0.1775** | **0.1254** | **0.1872** | **0.3122** | **0.4396** |
 | DART / DATR | CVPR 2025 | 0.4860 | 0.3480 | 0.2650 | 0.2080 | 0.2050 | 0.4110 | — |
 | LePaX | ECCV 2026 | 0.5310 | — | — | 0.2350 | 0.3160 | 0.4020 | — |
 | MPDRL | Frontiers 2026| 0.5080 | — | — | 0.1850 | 0.2310 | 0.3830 | — |

@@ -75,18 +75,28 @@ def ngram_f1(hyp: str, ref: str, n: int = 1) -> float:
     return 2 * p * rr / (p + rr)
 
 
-def utility(a: str, b: str, w_rouge=0.6, w_f1=0.4) -> float:
-    return w_rouge * rouge_l_f1(a, b) + w_f1 * 0.5 * (ngram_f1(a, b, 1) + ngram_f1(a, b, 2))
+def utility(a: str, b: str, w_rouge=0.5, w_f1=0.5, order=4) -> float:
+    """Multi-gram utility combining ROUGE-L with order 1-4 harmonic n-gram F1."""
+    if order == 4:
+        f1_val = (ngram_f1(a, b, 1) + ngram_f1(a, b, 2) + ngram_f1(a, b, 3) + ngram_f1(a, b, 4)) / 4.0
+    elif order == 2:
+        f1_val = 0.5 * (ngram_f1(a, b, 1) + ngram_f1(a, b, 2))
+    else:
+        f1_val = ngram_f1(a, b, 1)
+    return w_rouge * rouge_l_f1(a, b) + w_f1 * f1_val
 
 
-def mbr_select(cands, util=utility):
-    """Return the candidate with the highest mean utility against the others."""
+def mbr_select(cands, util=utility, len_bonus=0.15, target_len=30.0):
+    """Return the candidate with the highest mean utility against the others, with optional length normalization."""
     n = len(cands)
     if n == 1:
         return cands[0]
-    best, best_s = cands[0], -1.0
+    best, best_s = cands[0], -1e9
     for i in range(n):
         s = sum(util(cands[i], cands[j]) for j in range(n) if j != i) / (n - 1)
+        if len_bonus > 0:
+            c_len = len(cands[i].split())
+            s += len_bonus * min(c_len / target_len, 1.0)
         if s > best_s:
             best, best_s = cands[i], s
     return best

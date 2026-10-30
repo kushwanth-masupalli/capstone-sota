@@ -59,7 +59,9 @@ All evaluations are conducted on the official locked test split ($N=589$) using 
 | *Hurdle E1 (Top-1 Train Retrieval Hurdle)* | Local | 0.3449 | 0.2020 | 0.1299 | 0.0871 | 0.1514 | 0.2513 | 0.1970 | Empirical Retrieval Hurdle |
 | **Ours: Standard Beam Search (N=589)** | **This Repo** | 0.2728 | 0.1676 | 0.1155 | 0.0821 | 0.1360 | 0.2648 | 0.2915 | Beam Search Mode Collapse |
 | **Ours: Stochastic Sampling (N=589)** | **This Repo** | 0.3275 | 0.1980 | 0.1274 | 0.0840 | 0.1512 | 0.2753 | 0.2483 | Test Split Full Evaluation |
-| **Ours: MBR Consensus Decoding (N=50)** | **This Repo** | **0.4053** | **0.2546** | **0.1666** | **0.1024** | **0.1926** | **0.3124** | **0.3026** | **16 Candidates (4B + 12S)** |
+| **Ours: MBR Consensus (N=8, full test)** | **This Repo** | 0.3820 | 0.2355 | 0.1525 | 0.0975 | 0.1816 | 0.2951 | 0.3240 | Full Test Baseline MBR |
+| **Ours: Enhanced MBR (N=589 Full Test)** | **This Repo** | **0.3897** | **0.2364** | **0.1548** | **0.1048** | **0.1694** | **0.2833** | **0.2386** | **Retrieval-Augmented + Length-Norm Utility** |
+| **Ours: Enhanced MBR (Pilot N=50)** | **This Repo** | **0.4081** | **0.2592** | **0.1775** | **0.1254** | **0.1872** | **0.3122** | **0.4396** | **16 Candidates + Exemplars + Length-Norm** |
 
 ### Critical Empirical Findings:
 1. **The Empirical Baseline Hurdles (E0 & E1)**:

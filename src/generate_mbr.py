@@ -34,10 +34,11 @@ def generate_study_candidates(
     device: str,
     n_candidates: int = 16,
     max_new_tokens: int = 128,
+    retrieved_candidates: Optional[List[str]] = None,
 ) -> List[str]:
     """
-    Generate a diverse pool of N candidate reports for MBR selection.
-    Mix of beam search outputs and stochastic samples at T=0.7.
+    Generate a diverse pool of candidate reports for MBR selection.
+    Mix of beam search outputs, stochastic samples (T=0.7), and retrieved training exemplars.
     """
     candidates = []
 
@@ -74,6 +75,10 @@ def generate_study_candidates(
         )
         candidates.extend(sample_cands)
 
+    # 3. Add retrieved exemplar reports into the MBR pool
+    if retrieved_candidates:
+        candidates.extend(retrieved_candidates)
+
     # Filter empty or duplicate candidates while preserving order
     unique_cands = []
     for c in candidates:
@@ -92,6 +97,8 @@ def run_inference(
     n_candidates: int = 16,
     max_new_tokens: int = 128,
     max_samples: Optional[int] = None,
+    include_retrieval: bool = True,
+    len_bonus: float = 0.15,
     out_json_path: str = "outputs/predictions.json",
 ) -> Dict:
     """
@@ -147,6 +154,7 @@ def run_inference(
             selected_report = truncate(reports[0], 60)
             candidate_pool = reports
         elif mode == "mbr":
+            ret_cands = item.get("similar_cases", []) if include_retrieval else None
             candidate_pool = generate_study_candidates(
                 model=model,
                 frontal_feat=f_feat,
@@ -155,8 +163,9 @@ def run_inference(
                 device=device,
                 n_candidates=n_candidates,
                 max_new_tokens=max_new_tokens,
+                retrieved_candidates=ret_cands,
             )
-            selected_report = mbr_select(candidate_pool, util=utility)
+            selected_report = mbr_select(candidate_pool, util=utility, len_bonus=len_bonus)
         else:
             raise ValueError(f"Unknown generation mode: {mode}")
 
@@ -212,6 +221,8 @@ def main():
     parser.add_argument("--split", choices=["test", "val"], default="test")
     parser.add_argument("--mode", choices=["mbr", "beam", "sample"], default="mbr")
     parser.add_argument("--n_candidates", type=int, default=16, help="Pool size for MBR")
+    parser.add_argument("--include_retrieval", action="store_true", default=True, help="Include retrieved cases in MBR pool")
+    parser.add_argument("--len_bonus", type=float, default=0.15, help="Length normalization bonus for MBR")
     parser.add_argument("--max_new_tokens", type=int, default=128)
     parser.add_argument("--max_samples", type=int, default=None, help="Limit number of samples for quick testing")
     parser.add_argument("--data_dir", default="processed")
@@ -264,6 +275,8 @@ def main():
         n_candidates=args.n_candidates,
         max_new_tokens=args.max_new_tokens,
         max_samples=args.max_samples,
+        include_retrieval=args.include_retrieval,
+        len_bonus=args.len_bonus,
         out_json_path=args.out_json,
     )
 

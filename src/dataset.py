@@ -205,6 +205,7 @@ class IUReportDataset(Dataset):
             "labels": torch.tensor(labels, dtype=torch.long),
             "target_findings": target_findings,
             "prompt_length": len(prompt_ids),
+            "similar_cases": similar_cases,
         }
 
 
