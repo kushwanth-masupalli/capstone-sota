@@ -61,6 +61,7 @@ All evaluations are conducted on the official locked test split ($N=589$) using 
 | **Ours: Stochastic Sampling (N=589)** | **This Repo** | 0.3275 | 0.1980 | 0.1274 | 0.0840 | 0.1512 | 0.2753 | 0.2483 | Test Split Full Evaluation |
 | **Ours: MBR Consensus (N=8, full test)** | **This Repo** | 0.3820 | 0.2355 | 0.1525 | 0.0975 | 0.1816 | 0.2951 | 0.3240 | Full Test Baseline MBR |
 | **Ours: Enhanced MBR (N=589 Full Test)** | **This Repo** | **0.3897** | **0.2364** | **0.1548** | **0.1048** | **0.1694** | **0.2833** | **0.2386** | **Retrieval-Augmented + Length-Norm Utility** |
+| **Ours: METEOR-Targeted MBR (N=589 Full Test)** | **This Repo** | **0.4199** | **0.2719** | **0.1886** | **0.1302** | **0.1835** | **0.2956** | **0.2975** | **Recall-Weighted METEOR Utility + Exemplars** |
 | **Ours: Enhanced MBR (Pilot N=50)** | **This Repo** | **0.4081** | **0.2592** | **0.1775** | **0.1254** | **0.1872** | **0.3122** | **0.4396** | **16 Candidates + Exemplars + Length-Norm** |
 
 ### Critical Empirical Findings:
