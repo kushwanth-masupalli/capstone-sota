@@ -434,6 +434,11 @@ python src/train_sft.py --stage 2 --fresh_s2 --epochs_s2 10 --lr_lora 5e-5 --lor
 ### 6. Consensus Report Generation & SOTA Decoding
 
 #### 6a. Standard MBR Consensus Decoding
+**PowerShell (Windows):**
+```powershell
+python src/generate_mbr.py --checkpoint_dir outputs/checkpoints/stage2_best --split test --mode mbr --n_candidates 16 --out_json outputs/test_mbr_predictions.json
+```
+*Linux / Bash:*
 ```bash
 python src/generate_mbr.py \
   --checkpoint_dir outputs/checkpoints/stage2_best \
@@ -444,6 +449,11 @@ python src/generate_mbr.py \
 ```
 
 #### 6b. METEOR-Targeted MBR Consensus (0.4199 BLEU-1, 0.1835 METEOR, 0.2975 CIDEr)
+**PowerShell (Windows):**
+```powershell
+python src/generate_mbr.py --checkpoint_dir outputs/checkpoints/stage2_best --split test --mode meteor_mbr --n_candidates 16 --out_json outputs/test_meteor_mbr_predictions.json
+```
+*Linux / Bash:*
 ```bash
 python src/generate_mbr.py \
   --checkpoint_dir outputs/checkpoints/stage2_best \
@@ -455,6 +465,12 @@ python src/generate_mbr.py \
 
 #### 6c. Sentence-Level Clinical Consensus Fusion (Beats Published SOTA: METEOR = 0.2077)
 Fuses high-confidence, non-redundant clinical statements across candidate pools (sampling, beam, and MBR):
+
+**PowerShell (Windows):**
+```powershell
+python src/generate_consensus_fusion.py --ref processed/test.json --meteor_pred outputs/test_meteor_mbr_predictions.json --enh_pred outputs/test_enhanced_mbr_predictions.json --sample_pred outputs/test_sample_predictions.json --out_json outputs/test_consensus_fusion_predictions.json --max_sents 6 --max_words 65
+```
+*Linux / Bash:*
 ```bash
 python src/generate_consensus_fusion.py \
   --ref processed/test.json \
@@ -468,6 +484,12 @@ python src/generate_consensus_fusion.py \
 
 #### 6d. High-Recall Consensus Fusion (Pushing Toward 0.22 – 0.24 METEOR)
 Expands secondary thoracic coverage (ribs, mediastinum, pleural spaces) with higher sentence budget:
+
+**PowerShell (Windows):**
+```powershell
+python src/generate_consensus_fusion.py --ref processed/test.json --meteor_pred outputs/test_meteor_mbr_predictions.json --enh_pred outputs/test_enhanced_mbr_predictions.json --sample_pred outputs/test_sample_predictions.json --out_json outputs/test_consensus_fusion_top_predictions.json --max_sents 9 --max_words 75
+```
+*Linux / Bash:*
 ```bash
 python src/generate_consensus_fusion.py \
   --ref processed/test.json \
@@ -482,7 +504,13 @@ python src/generate_consensus_fusion.py \
 ---
 
 ### 7. Stage 3 Self-Critical Sequence Training (SCST / RL)
-Directly maximizes natural language reward (METEOR + ROUGE-L) via policy gradients using baseline greedy decoding:
+Directly optimizes policy gradients on natural language reward (METEOR + ROUGE-L) against greedy baseline decoding:
+
+**PowerShell (Windows):**
+```powershell
+python src/train_scst.py --sft_checkpoint outputs/checkpoints/stage2_best --save_dir outputs/checkpoints/stage3_meteor_best --epochs 2 --lr 2e-5 --grad_accum 16 --max_new_tokens 60
+```
+*Linux / Bash:*
 ```bash
 python src/train_scst.py \
   --sft_checkpoint outputs/checkpoints/stage2_best \
@@ -496,6 +524,11 @@ python src/train_scst.py \
 ---
 
 ### 8. Clinical Cross-Checking Audit
+**PowerShell (Windows):**
+```powershell
+python src/evaluate.py --mode crosscheck --pred outputs/test_consensus_fusion_predictions.json --priors processed/test_priors.json --out outputs/crosscheck_audit.json
+```
+*Linux / Bash:*
 ```bash
 python src/evaluate.py \
   --mode crosscheck \
