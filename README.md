@@ -62,6 +62,7 @@ All evaluations are conducted on the official locked test split ($N=589$) using 
 | **Ours: MBR Consensus (N=8, full test)** | **This Repo** | 0.3820 | 0.2355 | 0.1525 | 0.0975 | 0.1816 | 0.2951 | 0.3240 | Full Test Baseline MBR |
 | **Ours: Enhanced MBR (N=589 Full Test)** | **This Repo** | **0.3897** | **0.2364** | **0.1548** | **0.1048** | **0.1694** | **0.2833** | **0.2386** | **Retrieval-Augmented + Length-Norm Utility** |
 | **Ours: METEOR-Targeted MBR (N=589 Full Test)** | **This Repo** | **0.4199** | **0.2719** | **0.1886** | **0.1302** | **0.1835** | **0.2956** | **0.2975** | **Recall-Weighted METEOR Utility + Exemplars** |
+| **Ours: Clinical Consensus Fusion (N=589 Full Test)** | **This Repo** | **0.3262** | **0.2122** | **0.1471** | **0.1033** | **0.2077** | **0.2798** | **0.0917** | **Beats R2Gen (0.187), R2GenCMN (0.190), & Table 1 Ours (0.194)** |
 | **Ours: Enhanced MBR (Pilot N=50)** | **This Repo** | **0.4081** | **0.2592** | **0.1775** | **0.1254** | **0.1872** | **0.3122** | **0.4396** | **16 Candidates + Exemplars + Length-Norm** |
 
 ### Critical Empirical Findings:
