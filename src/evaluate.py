@@ -37,6 +37,8 @@ def load_pred(path):
         p = json.load(f)
     if isinstance(p, list):
         return {str(x["uid"]): x.get("generated", x.get("pred", "")) for x in p}
+    if isinstance(p, dict) and "predictions" in p and isinstance(p["predictions"], list):
+        return {str(x["uid"]): x.get("generated", x.get("pred", "")) for x in p["predictions"]}
     return {str(k): v for k, v in p.items()}
 
 

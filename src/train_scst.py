@@ -265,8 +265,9 @@ def main():
                         labels=full_labels.unsqueeze(0),
                     )
 
-                    # SCST loss: - advantage * log_prob (normalized by length)
-                    rl_loss = - advantage * (out["loss_lm"] / args.grad_accum)
+                    # SCST loss: minimize expected risk = advantage * cross_entropy
+                    # When advantage > 0 (sampled > baseline), minimizing loss_lm increases log p(y).
+                    rl_loss = advantage * (out["loss_lm"] / args.grad_accum)
                     rl_loss.backward()
 
             total_steps += 1
